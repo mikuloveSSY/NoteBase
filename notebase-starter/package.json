@@ -1,6 +1,6 @@
 {
   "name": "notebase-starter",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,7 +11,8 @@
     "desktop": "tauri dev",
     "desktop:build": "tauri build",
     "test:core": "cargo test --manifest-path crates/notebase-core/Cargo.toml",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:desktop": "playwright test --config playwright.desktop.config.ts"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.3.4",

@@ -1857,7 +1857,7 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
 name = "notebase"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "notebase-core",
  "serde_json",
@@ -1867,14 +1867,16 @@ dependencies = [
 
 [[package]]
 name = "notebase-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
  "sha2",
  "tempfile",
+ "unicode-normalization",
  "walkdir",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3638,6 +3640,15 @@ name = "unicode-ident"
 version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
+
+[[package]]
+name = "unicode-normalization"
+version = "0.1.26"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75cd3fb03d5288b3ba9a1ee103ac7e9cbb59f0b03d64f8ddfcc04dd42758a85d"
+dependencies = [
+ "tinyvec",
+]
 
 [[package]]
 name = "unicode-segmentation"

@@ -7,3 +7,4 @@ crates/*/target/
 test-results/
 playwright-report/
 .DS_Store
+src-tauri/gen/

@@ -1,5 +1,7 @@
 use crate::domain::NOTE_SIZE_LIMIT as LIMIT;
-use crate::domain::{self, field, AppError, NoteStore, Request, Response, Result};
+use crate::domain::{
+    self, field, AppError, NoteStore, RelPath, Request, Response, Result, StoreError,
+};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -51,7 +53,7 @@ impl App {
         match command {
             "vault_open" => {
                 let store = (self.factory)(field(p, "path")?)?;
-                let count = store.list()?.len();
+                let count = store.list(&RelPath::root())?.len();
                 let id = hash(store.vault_path().as_bytes())[7..23].to_string();
                 self.store = Some(store);
                 self.known.clear();
@@ -69,8 +71,13 @@ impl App {
                     .unwrap_or(500)
                     .clamp(1, 500) as usize;
                 let after = p.get("cursor").and_then(Value::as_str).unwrap_or("");
-                let list = self.store()?.list()?;
-                let items:Vec<Value>=list.into_iter().filter(|e|(prefix.is_empty()||e.path.starts_with(&format!("{prefix}/")))&&e.path.as_str()>after).map(|e|json!({"title":title(&e.path),"path":e.path,"mtimeMs":e.mtime_ms,"hasAttachment":false})).collect();
+                let root = if prefix.is_empty() {
+                    RelPath::root()
+                } else {
+                    RelPath::new(prefix)?
+                };
+                let list = self.store()?.list(&root)?;
+                let items:Vec<Value>=list.into_iter().filter(|e| e.path.as_str()>after).map(|e|json!({"title":title(&e.path),"path":e.path,"mtimeMs":e.mtime_ms,"hasAttachment":false})).collect();
                 let next = if items.len() > limit {
                     items[limit - 1]["path"].clone()
                 } else {
@@ -83,14 +90,7 @@ impl App {
             "note_create" => {
                 let dir = p.get("dir").and_then(Value::as_str).unwrap_or("");
                 domain::validate_rel(dir, true)?;
-                let name = field(p, "title")?.trim();
-                if name.contains('/') || name.is_empty() {
-                    return Err(AppError::new(
-                        "E_PATH_INVALID",
-                        "标题不能为空且不能含路径分隔符",
-                    ));
-                }
-                domain::validate_rel(name, false)?;
+                let name = domain::sanitize_title(field(p, "title")?)?;
                 for n in 0..10000 {
                     let filename = if n == 0 {
                         format!("{name}.md")
@@ -102,48 +102,68 @@ impl App {
                     } else {
                         format!("{dir}/{filename}")
                     };
-                    match self.store()?.create_new(&path) {
+                    match self.store()?.create_new(&RelPath::new(&path)?) {
                         Ok(()) => return Ok(json!({"path":path})),
-                        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
-                        Err(e) => return Err(AppError::io(e)),
+                        Err(StoreError::AlreadyExists) => continue,
+                        Err(e) => return Err(e.into()),
                     }
                 }
                 Err(AppError::new("E_PATH_INVALID", "同名笔记过多"))
             }
             "note_read" => {
                 let path = field(p, "path")?;
-                let stored = self.store()?.read(path)?;
-                let read_only = stored.raw.len() > LIMIT;
-                if read_only {
-                    return Err(AppError::new(
-                        "E_FILE_TOO_LARGE",
-                        "基础版尚未接入大文件只读预览，请用外部编辑器打开",
-                    ));
+                let stored = self.store()?.read(&RelPath::new(path)?)?;
+                let mut preview = stored.raw.as_slice();
+                // 预览截断点可能落在 UTF-8 字符内部，去掉尾部不完整字符，不误报编码错误。
+                if stored.truncated {
+                    if let Err(error) = std::str::from_utf8(preview) {
+                        if error.error_len().is_none() {
+                            preview = &preview[..error.valid_up_to()];
+                        }
+                    }
                 }
-                let raw_text = std::str::from_utf8(&stored.raw).map_err(|_| {
-                    AppError::new(
-                        "E_ENCODING_INVALID",
-                        "基础版仅读取 UTF-8 文件，原文件未修改",
-                    )
-                })?;
-                let body = raw_text.strip_prefix('\u{feff}').unwrap_or(raw_text);
+                let valid_encoding = std::str::from_utf8(preview).is_ok();
+                let raw_text = String::from_utf8_lossy(preview);
+                let read_only = stored.truncated || !valid_encoding || stored.read_only;
+                let body = raw_text
+                    .strip_prefix('\u{feff}')
+                    .unwrap_or(raw_text.as_ref());
                 let (frontmatter, frontmatter_error) = frontmatter(body);
-                let content_hash = hash(&stored.raw);
-                self.known.insert(path.into(), content_hash.clone());
+                // 截断预览没有全文件哈希；空值不能作为保存凭证。
+                let content_hash = if stored.truncated {
+                    String::new()
+                } else {
+                    hash(&stored.raw)
+                };
+                if read_only {
+                    self.known.remove(path);
+                } else {
+                    self.known.insert(path.into(), content_hash.clone());
+                }
                 Ok(
-                    json!({"path":path,"title":title(path),"body":body,"frontmatter":frontmatter,"frontmatterError":frontmatter_error,"contentHash":content_hash,"mtimeMs":stored.mtime_ms,"sizeBytes":stored.raw.len(),"encoding":"utf-8","lineEnding":if body.contains("\r\n"){"crlf"}else{"lf"},"readOnly":false}),
+                    json!({"path":path,"title":title(path),"body":body,"frontmatter":frontmatter,"frontmatterError":frontmatter_error,"contentHash":content_hash,"mtimeMs":stored.mtime_ms,"sizeBytes":stored.size_bytes,"encoding":if valid_encoding {"utf-8"} else {"unknown"},"lineEnding":if body.contains("\r\n"){"crlf"}else{"lf"},"readOnly":read_only}),
                 )
             }
             "note_save" => {
                 let path = field(p, "path")?;
                 let body = field(p, "body")?;
                 let base = field(p, "baseHash")?;
-                let stored = self.store()?.read(path)?;
-                if stored.raw.len() > LIMIT {
+                let relative = RelPath::new(path)?;
+                let stored = self.store()?.read(&relative)?;
+                if stored.truncated || stored.size_bytes > LIMIT as u64 {
                     return Err(AppError::new(
                         "E_FILE_TOO_LARGE",
                         "文件超过 10 MB，不能通过基础版保存",
                     ));
+                }
+                let old = std::str::from_utf8(&stored.raw).map_err(|_| {
+                    AppError::new(
+                        "E_ENCODING_INVALID",
+                        "源文件不是 UTF-8，只读预览不能直接保存",
+                    )
+                })?;
+                if stored.read_only {
+                    return Err(AppError::new("E_IO_PERMISSION", "文件是只读的，不能保存"));
                 }
                 let current = hash(&stored.raw);
                 let known = self
@@ -164,26 +184,19 @@ impl App {
                         "请求基于旧版本，请重新读取",
                     ));
                 }
-                let old = std::str::from_utf8(&stored.raw)
-                    .map_err(|_| AppError::new("E_ENCODING_INVALID", "源文件不是 UTF-8"))?;
-                let normalized = body.replace("\r\n", "\n");
-                let mut output = if old.contains("\r\n") {
+                let normalized = body.trim_start_matches('\u{feff}').replace("\r\n", "\n");
+                let output = if old.contains("\r\n") {
                     normalized.replace('\n', "\r\n")
                 } else {
                     normalized
                 };
-                if old.starts_with('\u{feff}') && !output.starts_with('\u{feff}') {
-                    output.insert(0, '\u{feff}');
-                }
                 if output.len() > LIMIT {
                     return Err(AppError::new("E_FILE_TOO_LARGE", "保存内容超过 10 MB"));
                 }
-                self.store()?.write_atomic(path, output.as_bytes())?;
-                let after = self.store()?.read(path)?;
-                let content_hash = hash(&after.raw);
-                self.known.insert(path.into(), content_hash.clone());
+                let written = self.store()?.write_atomic(&relative, output.as_bytes())?;
+                self.known.insert(path.into(), written.content_hash.clone());
                 Ok(
-                    json!({"path":path,"contentHash":content_hash,"mtimeMs":after.mtime_ms,"bytesWritten":output.len(),"snapshotCreated":false,"indexQueued":false,"warnings":["索引队列与版本快照尚未接入"]}),
+                    json!({"path":path,"contentHash":written.content_hash,"mtimeMs":written.mtime_ms,"bytesWritten":written.bytes_written,"snapshotCreated":false,"indexQueued":false,"warnings":["索引队列与版本快照尚未接入"]}),
                 )
             }
             other => Err(AppError::new(

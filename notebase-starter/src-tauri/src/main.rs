@@ -3,7 +3,7 @@ use notebase_core::{App, Request, Response};
 use std::sync::{Arc, Mutex};
 use tauri::State;
 type Shared = Arc<Mutex<App>>;
-async fn dispatch(expected: &str, request: Request, state: State<'_, Shared>) -> Response {
+async fn dispatch(expected: &str, request: Request, app: Shared) -> Response {
     if request.command != expected {
         return Response::Err {
             id: request.id,
@@ -11,7 +11,6 @@ async fn dispatch(expected: &str, request: Request, state: State<'_, Shared>) ->
             error: notebase_core::domain::AppError::new("E_INTERNAL", "请求信封与传输命令不一致"),
         };
     }
-    let app = state.inner().clone();
     let id = request.id.clone();
     match tauri::async_runtime::spawn_blocking(move || match app.lock() {
         Ok(mut app) => app.dispatch(request),
@@ -35,8 +34,10 @@ async fn dispatch(expected: &str, request: Request, state: State<'_, Shared>) ->
 macro_rules! command {
     ($name:ident) => {
         #[tauri::command]
-        async fn $name(request: Request, state: State<'_, Shared>) -> Response {
-            dispatch(stringify!($name), request, state).await
+        async fn $name(request: Request, state: State<'_, Shared>) -> Result<Response, String> {
+            // Tauri 要求带 State 引用的异步命令返回 Result；Ok 内仍是既有业务信封。
+            let app = state.inner().clone();
+            Ok(dispatch(stringify!($name), request, app).await)
         }
     };
 }

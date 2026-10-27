@@ -103,7 +103,7 @@ fn external_modification_preserved() {
     );
 }
 #[test]
-fn utf8_bom_and_crlf_preserved() {
+fn saving_removes_bom_and_preserves_crlf() {
     let (dir, mut app) = setup();
     fs::write(dir.path().join("A.md"), "\u{feff}# A\r\n正文\r\n").unwrap();
     let n = read(&mut app, "A.md");
@@ -115,7 +115,7 @@ fn utf8_bom_and_crlf_preserved() {
     assert_eq!(r["ok"], true);
     assert_eq!(
         fs::read_to_string(dir.path().join("A.md")).unwrap(),
-        "\u{feff}# B\r\n新内容\r\n"
+        "# B\r\n新内容\r\n"
     );
 }
 #[test]
@@ -167,7 +167,16 @@ fn invalid_utf8_is_not_overwritten() {
     let (dir, mut app) = setup();
     fs::write(dir.path().join("A.md"), [255, 254, 0]).unwrap();
     let r = call(&mut app, "note_read", json!({"path":"A.md"}));
-    assert_eq!(r["error"]["code"], "E_ENCODING_INVALID");
+    assert_eq!(r["ok"], true);
+    assert_eq!(r["data"]["readOnly"], true);
+    assert_eq!(r["data"]["encoding"], "unknown");
+    assert!(r["data"]["body"].as_str().unwrap().contains('\u{fffd}'));
+    let saved = call(
+        &mut app,
+        "note_save",
+        json!({"path":"A.md","body":"replacement","baseHash":r["data"]["contentHash"]}),
+    );
+    assert_eq!(saved["error"]["code"], "E_ENCODING_INVALID");
     assert_eq!(fs::read(dir.path().join("A.md")).unwrap(), [255, 254, 0]);
 }
 #[cfg(unix)]
@@ -179,4 +188,85 @@ fn symlink_cannot_escape_vault() {
     std::os::unix::fs::symlink(outside.path(), dir.path().join("link")).unwrap();
     let r = call(&mut app, "note_read", json!({"path":"link/secret.md"}));
     assert_eq!(r["error"]["code"], "E_PATH_INVALID");
+}
+
+#[test]
+fn sanitized_creation_collisions_do_not_overwrite() {
+    let (dir, mut app) = setup();
+    for (title, expected) in [
+        ("CON", "_CON.md"),
+        ("COM¹", "_COM1.md"),
+        ("a<b>c", "a_b_c.md"),
+        ("name.", "name.md"),
+        ("Ａ", "A.md"),
+        ("A", "A (1).md"),
+    ] {
+        let created = call(&mut app, "note_create", json!({"title":title}));
+        assert_eq!(created["data"]["path"], expected, "{created}");
+        assert!(dir.path().join(expected).is_file());
+    }
+}
+
+#[test]
+fn large_read_returns_a_bounded_readonly_preview_without_a_save_hash() {
+    use notebase_core::domain::{NOTE_SIZE_LIMIT, PREVIEW_SIZE_LIMIT};
+    let (dir, mut app) = setup();
+    let mut content = vec![b'a'; PREVIEW_SIZE_LIMIT - 1];
+    content.extend_from_slice("中".as_bytes());
+    content.resize(NOTE_SIZE_LIMIT + 1, b'a');
+    fs::write(dir.path().join("large.md"), &content).unwrap();
+    let n = read(&mut app, "large.md");
+    assert_eq!(n["readOnly"], true);
+    assert_eq!(n["encoding"], "utf-8");
+    assert_eq!(n["sizeBytes"], content.len());
+    assert_eq!(n["contentHash"], "");
+    assert_eq!(n["body"].as_str().unwrap().len(), PREVIEW_SIZE_LIMIT - 1);
+    let saved = call(
+        &mut app,
+        "note_save",
+        json!({"path":"large.md","body":"short","baseHash":""}),
+    );
+    assert_eq!(saved["error"]["code"], "E_FILE_TOO_LARGE");
+    assert_eq!(fs::read(dir.path().join("large.md")).unwrap(), content);
+}
+
+#[test]
+fn exactly_ten_megabytes_is_not_truncated_and_small_saves_keep_lf() {
+    use notebase_core::domain::NOTE_SIZE_LIMIT;
+    let (dir, mut app) = setup();
+    fs::write(dir.path().join("A.md"), vec![b'a'; NOTE_SIZE_LIMIT]).unwrap();
+    let n = read(&mut app, "A.md");
+    assert_eq!(n["readOnly"], false);
+    assert_eq!(n["body"].as_str().unwrap().len(), NOTE_SIZE_LIMIT);
+    let saved = call(
+        &mut app,
+        "note_save",
+        json!({"path":"A.md","body":"\u{feff}# B\r\n正文\r\n","baseHash":n["contentHash"]}),
+    );
+    assert_eq!(saved["ok"], true);
+    assert_eq!(
+        fs::read_to_string(dir.path().join("A.md")).unwrap(),
+        "# B\n正文\n"
+    );
+}
+
+#[test]
+fn readonly_file_preview_cannot_be_saved_through_ipc() {
+    let (dir, mut app) = setup();
+    let target = dir.path().join("A.md");
+    fs::write(&target, "原文").unwrap();
+    let original = fs::metadata(&target).unwrap().permissions();
+    let mut readonly = original.clone();
+    readonly.set_readonly(true);
+    fs::set_permissions(&target, readonly).unwrap();
+    let n = read(&mut app, "A.md");
+    let saved = call(
+        &mut app,
+        "note_save",
+        json!({"path":"A.md","body":"new","baseHash":n["contentHash"]}),
+    );
+    fs::set_permissions(&target, original).unwrap();
+    assert_eq!(n["readOnly"], true);
+    assert_eq!(saved["error"]["code"], "E_IO_PERMISSION");
+    assert_eq!(fs::read_to_string(target).unwrap(), "原文");
 }

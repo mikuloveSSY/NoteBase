@@ -1,13 +1,14 @@
 # NoteBase 主干基础工程
 
-这是四人小组的共同起点，版本为 **0.1.0**。先验证“打开文件夹 → 新建笔记 → 编辑 → 手动保存 → 重新打开”，再按四人分工接入检索、链接、渲染和备份。
+这是四人小组的共同工程，当前为 **0.2.0 成员一存储初版**。已在 Windows 验证“打开文件夹 → 新建笔记 → 编辑 → 手动保存 → 重新打开”，后续按四人分工接入检索、链接、渲染和备份。
 
 ## 现在具备什么
 
 - Tauri 2 桌面入口、Rust 核心、TypeScript 与 Vite 前端、CodeMirror 6 编辑器。
 - 笔记库打开、文件枚举、新建、读取与手动保存。桌面模式操作真实 `.md` 文件。
 - 请求与响应信封、已有 23 个命令名称的入口注册。未实现命令返回 `E_INTERNAL` 并说明未实现，不返回假数据。
-- 同名文件自动加序号；保存采用同目录临时文件和原子替换；UTF-8 BOM 与 CRLF 保留；保存前检查内容哈希，拒绝旧客户端或外部修改后的覆盖。
+- 同名文件自动加序号；保存采用同目录临时文件和原子替换；保存去除 UTF-8 BOM 并保留 LF/CRLF 风格；保存前检查内容哈希，拒绝外部修改后的覆盖。
+- 新建标题自动修正非法字符和系统保留名；非法 UTF-8、只读文件和超过 10 MiB 的文件以只读方式展示，大文件仅预览前 256 KiB。列表可继续加载后续分页。
 - 基础路径校验，拒绝越界路径、系统保留名和符号链接。可读取 frontmatter，但编辑器仍编辑完整原文件，不重写 YAML。
 - 浏览器联调模式，仅使用内存数据，刷新即重置；界面会显著标注。浏览器模式不能验证真实磁盘写入。
 
@@ -46,17 +47,20 @@ npm run test:core
 # 可选 浏览器操作回归
 npx playwright install chromium
 npm run test:e2e
-# Windows 桌面安装包
+# Windows 桌面编译与真实 IPC 回归
+npm run desktop:build -- --no-bundle
+npm run test:desktop
+# 可选 Windows 桌面安装包（本版未验收）
 npm run desktop:build
 ```
 
-Windows 安装包目标为 NSIS，默认输出到 `src-tauri/target/release/bundle/nsis/`。当前配置优先 Windows；macOS/Linux 的系统依赖、打包目标及兼容性验收需要后续补齐。
+Windows 可执行文件输出到 `src-tauri/target/release/notebase.exe`。桌面测试使用独立临时笔记库及 WebView2 配置，不操作日常笔记。浏览器回归可设置 PowerShell 环境变量 `$env:PLAYWRIGHT_CHANNEL='msedge'` 使用已安装 Edge。Windows 安装包目标为 NSIS，默认输出到 `src-tauri/target/release/bundle/nsis/`；本版未验收安装包、macOS/Linux。
 
 ## 四个人从哪里开始
 
 | 成员 | 当前入口 | 接下来先做的一件事 |
 |---|---|---|
-| 一 存储与检索 | `crates/notebase-core/src/infra.rs`、`domain.rs` | 补齐原设计 NoteStore 端口，再接 index-store 与单写者 index-worker；保留中文短查询回退 |
+| 一 存储与检索 | `crates/notebase-core/src/infra.rs`、`domain.rs` | 在现有七个存储方法上对齐最终业务类型，再接 index-store 与单写者 index-worker；保留中文短查询回退 |
 | 二 编辑与知识组织 | `crates/notebase-core/src/application.rs` | 从现有笔记用例拆出 note-svc，补自动保存、草稿与恢复；随后接 link-svc |
 | 三 导出与数据保障 | Rust 核心的应用层与基础设施层扩展位置 | 先实现 renderer 端口和 comrak，供预览与导出共用，再做备份及版本快照 |
 | 四 界面与集成 | `src/`、`src-tauri/` | 保持现有读写闭环可用，逐项连接其余服务；统一维护 IPC、界面、日志和打包 |
@@ -72,9 +76,9 @@ Windows 安装包目标为 NSIS，默认输出到 `src-tauri/target/release/bund
 
 ## 当前验证边界
 
-本次已在 Linux 环境验证核心及前端，具体结果见 `docs/验证记录.md`。当前环境缺少 Tauri 所需 WebKitGTK 等桌面依赖，**没有完成桌面应用编译、Windows 启动或安装包验证**。桌面入口源码和配置已提供，需在上述 Windows 环境中完成首次构建。
+本版已完成 Windows 核心测试、前端构建、契约测试、浏览器回归、桌面 release 编译和真实桌面 IPC 测试，见 [本版验证记录](docs/验证记录-v0.2.0.md)。原 [0.1.0 验证记录](docs/验证记录.md) 仅作为历史记录。
 
-此版本的 NoteStore 是最小子集，尚未补齐设计文档的所有方法与值对象；大于 10 MB 的笔记暂返回错误，不宣称具备既定的只读大文件预览。列表接口支持分页，当前界面只加载前 500 篇。索引与快照尚未接入，保存响应明确返回 `indexQueued=false`、`snapshotCreated=false`。全库枚举、全局串行锁、内部 DTO 和错误分类仍需后续完善；不要用此基础版宣称已达到 10 万篇性能目标。
+NoteStore 已提供 RelPath 等值对象及 read、write_atomic、create_new、rename、delete、list、stat；原始字节读写签名仍需与成员二对齐。底层重命名、删除不代表对应业务命令已实现。索引与快照尚未接入，保存返回 `indexQueued=false`、`snapshotCreated=false`。全库枚举、全局串行锁和路径竞态仍需完善；没有完成 10 万篇性能验收。接口取舍和需求状态见 [存储初版交接](docs/存储初版交接.md)。
 
 ## 技术资料
 
