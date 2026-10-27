@@ -8,3 +8,7 @@ test-results/
 playwright-report/
 .DS_Store
 src-tauri/gen/
+*.db
+*.db-wal
+*.db-shm
+*.writer.lock

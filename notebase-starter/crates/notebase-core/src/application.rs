@@ -2,15 +2,19 @@ use crate::domain::NOTE_SIZE_LIMIT as LIMIT;
 use crate::domain::{
     self, field, AppError, NoteStore, RelPath, Request, Response, Result, StoreError,
 };
+use crate::index::{IndexSession, IndexStatus};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
 type StoreFactory = Box<dyn Fn(&str) -> Result<Box<dyn NoteStore>> + Send + Sync>;
+pub type IndexFactory = Box<dyn Fn(&str, &str) -> Box<dyn IndexSession> + Send + Sync>;
 pub struct App {
     store: Option<Box<dyn NoteStore>>,
     known: HashMap<String, String>,
     factory: StoreFactory,
+    index_factory: Option<IndexFactory>,
+    index: Option<Box<dyn IndexSession>>,
 }
 fn hash(bytes: &[u8]) -> String {
     format!("sha256:{:x}", Sha256::digest(bytes))
@@ -28,7 +32,13 @@ impl App {
             store: None,
             known: HashMap::new(),
             factory,
+            index_factory: None,
+            index: None,
         }
+    }
+    pub fn with_index(mut self, factory: IndexFactory) -> Self {
+        self.index_factory = Some(factory);
+        self
     }
     pub fn dispatch(&mut self, r: Request) -> Response {
         match self.handle(&r.command, &r.payload) {
@@ -55,13 +65,33 @@ impl App {
                 let store = (self.factory)(field(p, "path")?)?;
                 let count = store.list(&RelPath::root())?.len();
                 let id = hash(store.vault_path().as_bytes())[7..23].to_string();
+                let same_vault = self
+                    .store
+                    .as_ref()
+                    .is_some_and(|old| old.vault_path() == store.vault_path());
+                let reused = self
+                    .index
+                    .as_ref()
+                    .is_some_and(|index| same_vault && index.refresh());
+                if !reused {
+                    // 旧会话取消后不再发事件；后台任务始终绑定自己的库路径。
+                    self.index = None;
+                    self.index = self
+                        .index_factory
+                        .as_ref()
+                        .map(|factory| factory(&store.vault_path(), &id));
+                }
                 self.store = Some(store);
                 self.known.clear();
                 Ok(json!({"vaultId":id,"noteCount":count}))
             }
             "vault_info" => Ok(
-                json!({"vaultPath":self.store()?.vault_path(),"indexState":"unavailable","syncState":"disabled"}),
+                json!({"vaultPath":self.store()?.vault_path(),"indexState":self.index_status().state,"syncState":"disabled"}),
             ),
+            "index_status" => {
+                self.store()?;
+                Ok(serde_json::to_value(self.index_status()).expect("serializable index status"))
+            }
             "note_list" => {
                 let prefix = p.get("dirPrefix").and_then(Value::as_str).unwrap_or("");
                 domain::validate_rel(prefix, true)?;
@@ -103,7 +133,12 @@ impl App {
                         format!("{dir}/{filename}")
                     };
                     match self.store()?.create_new(&RelPath::new(&path)?) {
-                        Ok(()) => return Ok(json!({"path":path})),
+                        Ok(()) => {
+                            if let Some(index) = &self.index {
+                                index.invalidate();
+                            }
+                            return Ok(json!({"path":path}));
+                        }
                         Err(StoreError::AlreadyExists) => continue,
                         Err(e) => return Err(e.into()),
                     }
@@ -128,7 +163,7 @@ impl App {
                 let body = raw_text
                     .strip_prefix('\u{feff}')
                     .unwrap_or(raw_text.as_ref());
-                let (frontmatter, frontmatter_error) = frontmatter(body);
+                let (frontmatter, frontmatter_error) = domain::parse_frontmatter(body);
                 // 截断预览没有全文件哈希；空值不能作为保存凭证。
                 let content_hash = if stored.truncated {
                     String::new()
@@ -195,6 +230,9 @@ impl App {
                 }
                 let written = self.store()?.write_atomic(&relative, output.as_bytes())?;
                 self.known.insert(path.into(), written.content_hash.clone());
+                if let Some(index) = &self.index {
+                    index.invalidate();
+                }
                 Ok(
                     json!({"path":path,"contentHash":written.content_hash,"mtimeMs":written.mtime_ms,"bytesWritten":written.bytes_written,"snapshotCreated":false,"indexQueued":false,"warnings":["索引队列与版本快照尚未接入"]}),
                 )
@@ -209,25 +247,10 @@ impl App {
             )),
         }
     }
-}
-// 编辑器始终接收并保存完整原文，元数据解析不会重写 YAML。
-fn frontmatter(body: &str) -> (Value, Option<String>) {
-    let lf = body.replace("\r\n", "\n");
-    if !lf.starts_with("---\n") {
-        return (json!({}), None);
-    }
-    let rest = &lf[4..];
-    if let Some(end) = rest.find("\n---") {
-        let tail = &rest[end + 4..];
-        if !(tail.is_empty() || tail.starts_with('\n')) {
-            return (json!({}), Some("frontmatter 分隔符不合法".into()));
-        }
-        match serde_yaml::from_str::<Value>(&rest[..end]) {
-            Ok(v) if v.is_object() => (v, None),
-            Ok(_) => (json!({}), Some("frontmatter 必须是对象".into())),
-            Err(e) => (json!({}), Some(e.to_string())),
-        }
-    } else {
-        (json!({}), Some("frontmatter 缺少结束分隔符".into()))
+    fn index_status(&self) -> IndexStatus {
+        self.index
+            .as_ref()
+            .map(|index| index.status())
+            .unwrap_or_default()
     }
 }

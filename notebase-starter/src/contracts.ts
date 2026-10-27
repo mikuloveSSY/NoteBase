@@ -9,3 +9,4 @@ export type Response<T> = {id:string;ok:true;data:T}|{id:string;ok:false;error:A
 export interface NoteEntry {path:string;title:string;mtimeMs:number;hasAttachment:boolean}
 export interface NoteContent {path:string;title:string;body:string;frontmatter:Record<string,unknown>;frontmatterError:string|null;contentHash:string;mtimeMs:number;sizeBytes:number;encoding:string;lineEnding:string;readOnly:boolean}
 export interface SaveResult {path:string;contentHash:string;mtimeMs:number;bytesWritten:number;snapshotCreated:boolean;indexQueued:boolean;warnings:string[]}
+export interface IndexStatus {state:'ready'|'rebuilding'|'offline'|'unavailable';noteCount:number;indexBytes:number;lastFullBuildMs:number|null;progress:{phase:'scan'|'write'|'optimize';done:number;total:number;elapsedMs:number}|null}

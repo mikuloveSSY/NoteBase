@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 use notebase_core::{App, Request, Response};
 use std::sync::{Arc, Mutex};
-use tauri::State;
+use tauri::{Emitter, Manager, State};
 type Shared = Arc<Mutex<App>>;
 async fn dispatch(expected: &str, request: Request, app: Shared) -> Response {
     if request.command != expected {
@@ -66,7 +66,20 @@ command!(settings_get);
 command!(settings_set);
 fn main() {
     tauri::Builder::default()
-        .manage(Arc::new(Mutex::new(notebase_core::new_local_app())))
+        .setup(|app| {
+            // 可重定位缓存以支持独立测试/便携开发；后台仍强制校验绝对路径与库外位置。
+            let data_root = std::env::var_os("NOTEBASE_DATA_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or(app.path().app_data_dir()?);
+            let handle = app.handle().clone();
+            let events = Arc::new(move |name: &str, value: serde_json::Value| {
+                let _ = handle.emit(name, value);
+            });
+            app.manage(Arc::new(Mutex::new(notebase_core::new_indexed_app(
+                data_root, events,
+            ))));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             vault_open,
             vault_info,

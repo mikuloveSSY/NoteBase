@@ -1,6 +1,6 @@
 [package]
 name = "notebase-core"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 
 [dependencies]
@@ -11,6 +11,9 @@ sha2 = "0.10"
 tempfile = "3"
 walkdir = "2"
 unicode-normalization = "0.1.26"
+rusqlite = { version = "0.41", features = ["bundled"] }
+comrak = { version = "0.57", default-features = false }
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }

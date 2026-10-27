@@ -1,6 +1,7 @@
 import { test as base, expect, chromium, type Page, type Browser } from '@playwright/test';
 import { spawn, spawnSync } from 'node:child_process';
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, writeFile, readdir } from 'node:fs/promises';
+import { DatabaseSync } from 'node:sqlite';
 import { createServer } from 'node:net';
 import { resolve } from 'node:path';
 
@@ -26,6 +27,7 @@ const test = base.extend<{ desktopPage: Page; vault: string }>({
         ...process.env,
         WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
         WEBVIEW2_USER_DATA_FOLDER: testInfo.outputPath('webview-profile'),
+        NOTEBASE_DATA_DIR: testInfo.outputPath('app-data'),
       },
     });
     let spawnError: Error | undefined;
@@ -130,4 +132,39 @@ test('真实桌面拒绝覆盖外部修改', async ({ desktopPage: page, vault }
   await expect(page.locator('#status')).toContainText('E_EXTERNAL_MODIFIED');
   expect(await readFile(target, 'utf8')).toBe('外部修改');
   await expect(page.locator('#dirty')).toHaveText('有未保存修改');
+});
+
+test('真实桌面在库外构建索引 保存后提示刷新且重开能更新索引', async ({ desktopPage: page, vault }, testInfo) => {
+  const raw='---\ntitle: 索引标题\ntags: [数据库]\n---\n# 数据库测试\n中文连续搜索内容';
+  await writeFile(resolve(vault,'索引.md'),raw);
+  await openVault(page,vault);
+  await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 1 篇');
+  expect(await readdir(vault)).toEqual(['索引.md']);
+  expect(await readFile(resolve(vault,'索引.md'),'utf8')).toBe(raw);
+  const cacheRoot=testInfo.outputPath('app-data','vaults');
+  const ids=await readdir(cacheRoot);expect(ids).toHaveLength(1);
+  const db=new DatabaseSync(resolve(cacheRoot,ids[0],'index.db'),{readOnly:true});
+  try{
+    expect(db.prepare('SELECT title FROM notes').get()?.title).toBe('索引标题');
+    expect(db.prepare("SELECT count(*) AS n FROM note_fts WHERE note_fts MATCH '连续搜'").get()?.n).toBe(1);
+    expect(db.prepare('SELECT tag FROM tags').get()?.tag).toBe('数据库');
+    await page.getByRole('button',{name:'索引.md',exact:true}).click();
+    await page.locator('.cm-content').click();await page.keyboard.press('Control+End');await page.keyboard.insertText('\n保存后的新内容');
+    await page.getByRole('button',{name:'保存 Ctrl+S'}).click();
+    await expect(page.locator('#dirty')).toHaveText('已保存');
+    await expect(page.locator('#indexStatus')).toContainText('索引需刷新');
+    await openVault(page,vault);
+    await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 1 篇');
+    expect(db.prepare("SELECT count(*) AS n FROM note_fts WHERE note_fts MATCH '后的新'").get()?.n).toBe(1);
+  }finally{db.close();}
+});
+
+test('真实桌面切换库后索引状态与数据相互隔离',async({desktopPage:page,vault},testInfo)=>{
+  await writeFile(resolve(vault,'A.md'),'第一库正文');await openVault(page,vault);
+  await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 1 篇');
+  const second=testInfo.outputPath('second-vault');await mkdir(second);
+  await writeFile(resolve(second,'B.md'),'第二库正文');await writeFile(resolve(second,'C.md'),'另一篇');
+  await openVault(page,second);await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 2 篇');
+  expect(await readdir(testInfo.outputPath('app-data','vaults'))).toHaveLength(2);
+  await openVault(page,vault);await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 1 篇');
 });

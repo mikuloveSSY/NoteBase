@@ -265,3 +265,24 @@ pub trait NoteStore: Send {
     fn stat(&self, path: &RelPath) -> StoreResult<FileStat>;
     fn vault_path(&self) -> String;
 }
+// 编辑器始终接收并保存完整原文，元数据解析不会重写 YAML。
+pub fn parse_frontmatter(body: &str) -> (Value, Option<String>) {
+    let lf = body.replace("\r\n", "\n");
+    if !lf.starts_with("---\n") {
+        return (json!({}), None);
+    }
+    let rest = &lf[4..];
+    if let Some(end) = rest.find("\n---") {
+        let tail = &rest[end + 4..];
+        if !(tail.is_empty() || tail.starts_with('\n')) {
+            return (json!({}), Some("frontmatter 分隔符不合法".into()));
+        }
+        match serde_yaml::from_str::<Value>(&rest[..end]) {
+            Ok(v) if v.is_object() => (v, None),
+            Ok(_) => (json!({}), Some("frontmatter 必须是对象".into())),
+            Err(e) => (json!({}), Some(e.to_string())),
+        }
+    } else {
+        (json!({}), Some("frontmatter 缺少结束分隔符".into()))
+    }
+}
