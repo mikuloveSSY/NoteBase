@@ -1,0 +1,9 @@
+node_modules/
+dist/
+target/
+src-tauri/target/
+crates/*/target/
+*.log
+test-results/
+playwright-report/
+.DS_Store

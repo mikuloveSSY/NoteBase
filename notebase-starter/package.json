@@ -1,0 +1,30 @@
+{
+  "name": "notebase-starter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run src",
+    "tauri": "tauri",
+    "desktop": "tauri dev",
+    "desktop:build": "tauri build",
+    "test:core": "cargo test --manifest-path crates/notebase-core/Cargo.toml",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@codemirror/lang-markdown": "^6.3.4",
+    "@codemirror/state": "^6.7.6",
+    "@tauri-apps/api": "^2.0.0",
+    "codemirror": "^6.0.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.51.1",
+    "@tauri-apps/cli": "^2.0.0",
+    "@types/node": "^26.6.5",
+    "typescript": "^5.9.0",
+    "vite": "^7.0.0",
+    "vitest": "^3.2.0"
+  }
+}

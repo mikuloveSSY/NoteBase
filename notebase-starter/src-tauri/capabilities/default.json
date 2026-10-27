@@ -1,0 +1,1 @@
+{"identifier":"main-capability","description":"主窗口 IPC 和关闭确认","windows":["main"],"permissions":["core:default"]}
