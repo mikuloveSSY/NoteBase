@@ -22,7 +22,7 @@ const test = base.extend<{ desktopPage: Page; vault: string }>({
     const port = await availablePort();
     const app = spawn(executable, [], {
       windowsHide: true,
-      stdio: 'ignore',
+      stdio: ['ignore', 'pipe', 'pipe'],
       env: {
         ...process.env,
         WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
@@ -30,13 +30,16 @@ const test = base.extend<{ desktopPage: Page; vault: string }>({
         NOTEBASE_DATA_DIR: testInfo.outputPath('app-data'),
       },
     });
+    let diagnostics='';
+    app.stdout?.on('data',data=>{diagnostics=(diagnostics+data.toString('utf8')).slice(-8000);});
+    app.stderr?.on('data',data=>{diagnostics=(diagnostics+data.toString('utf8')).slice(-8000);});
     let spawnError: Error | undefined;
     app.once('error', error => { spawnError = error; });
     let browser: Browser | undefined;
     try {
       await expect.poll(async () => {
         if (spawnError) throw spawnError;
-        if (app.exitCode !== null) throw new Error(`桌面进程退出：${app.exitCode}`);
+        if (app.exitCode !== null) throw new Error(`桌面进程退出：${app.exitCode} ${diagnostics}`);
         try {
           const response = await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(1_000) });
           return response.ok;
@@ -48,7 +51,7 @@ const test = base.extend<{ desktopPage: Page; vault: string }>({
       const page = context.pages()[0];
       await expect(page.locator('#mode')).toContainText('桌面模式');
       await use(page);
-      await page.screenshot({ path: testInfo.outputPath('desktop.png'), fullPage: true });
+      if(!page.isClosed()) await page.screenshot({ path: testInfo.outputPath('desktop.png'), fullPage: true });
     } finally {
       await browser?.close().catch(() => {});
       if (app.pid && app.exitCode === null) {
@@ -95,10 +98,10 @@ test('真实桌面新建保留名 自动修正且不覆盖同名文件', async (
   await openVault(page, vault);
   page.once('dialog', dialog => dialog.accept('COM¹'));
   await page.getByRole('button', { name: '新建笔记' }).click();
-  await expect(page.locator('#path')).toHaveText('_COM1 (1).md');
+  await expect(page.locator('#path')).toHaveText('_COM1 (2).md');
   await expect(page.locator('#status')).toContainText('文件名已修正或避开同名');
   expect(await readFile(resolve(vault, '_COM1.md'), 'utf8')).toBe('保留内容');
-  expect(await readFile(resolve(vault, '_COM1 (1).md'), 'utf8')).toBe('');
+  expect(await readFile(resolve(vault, '_COM1 (2).md'), 'utf8')).toBe('');
 });
 
 test('真实桌面非法编码与超大文件只读预览', async ({ desktopPage: page, vault }) => {
@@ -131,7 +134,7 @@ test('真实桌面拒绝覆盖外部修改', async ({ desktopPage: page, vault }
   await page.getByRole('button', { name: '保存 Ctrl+S' }).click();
   await expect(page.locator('#status')).toContainText('E_EXTERNAL_MODIFIED');
   expect(await readFile(target, 'utf8')).toBe('外部修改');
-  await expect(page.locator('#dirty')).toHaveText('有未保存修改');
+  await expect(page.locator('#dirty')).toContainText('冲突暂停');
 });
 
 test('真实桌面在库外构建索引 保存后提示刷新且重开能更新索引', async ({ desktopPage: page, vault }, testInfo) => {
@@ -167,4 +170,38 @@ test('真实桌面切换库后索引状态与数据相互隔离',async({desktopP
   await openVault(page,second);await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 2 篇');
   expect(await readdir(testInfo.outputPath('app-data','vaults'))).toHaveLength(2);
   await openVault(page,vault);await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 1 篇');
+});
+
+async function invokeCore(page:Page,command:string,payload:Record<string,unknown>={}) {
+  return page.evaluate(async({command,payload})=>{
+    const internal=(window as unknown as {__TAURI_INTERNALS__:{invoke:(command:string,args:unknown)=>Promise<any>}}).__TAURI_INTERNALS__;
+    return internal.invoke(command,{request:{id:crypto.randomUUID(),command,payload,clientSeq:0}});
+  },{command,payload});
+}
+test('成员二真实桌面自动保存 属性与回收站恢复',async({desktopPage:page,vault})=>{
+ const target=resolve(vault,'A.md');await writeFile(target,'# A\n原文','utf8');await openVault(page,vault);
+ await page.getByRole('button',{name:'A.md',exact:true}).click();await page.locator('.cm-content').click();await page.keyboard.press('Control+End');await page.keyboard.insertText('自动保存内容');
+ await expect.poll(()=>readFile(target,'utf8'),{timeout:5000}).toContain('自动保存内容');await expect(page.locator('#dirty')).toHaveText('已保存');
+ await page.locator('#tags').fill('课程/算法');await page.locator('#propertyTitle').fill('属性标题');await page.locator('#propertyStatus').fill('进行中');await page.locator('#propertiesSave').click();
+ await expect(page.locator('#status')).toHaveText('属性已保存');expect(await readFile(target,'utf8')).toContain('课程/算法');expect(await readFile(target,'utf8')).toContain('自动保存内容');
+ page.once('dialog',d=>d.accept());await page.locator('#delete').click();await expect(page.locator('#status')).toContainText('已移到回收站');
+ await expect.poll(async()=>{try{await access(target);return true;}catch{return false;}}).toBe(false);
+ await page.getByText('回收站',{exact:true}).click();await expect(page.locator('#trash')).toContainText('A.md');await page.locator('#trash').getByRole('button',{name:'恢复',exact:true}).click();await expect(page.locator('#path')).toHaveText('A.md');expect(await readFile(target,'utf8')).toContain('自动保存内容');
+});
+test('成员二真实IPC持久草稿刷新恢复 双链重命名和图数据',async({desktopPage:page,vault})=>{
+ await writeFile(resolve(vault,'A.md'),'# A');await writeFile(resolve(vault,'B.md'),'[[A|显示]] and A');await openVault(page,vault);
+ const note=await invokeCore(page,'note_read',{path:'A.md',clientId:'ipc-recovery'});expect(note.ok).toBe(true);
+ const draft=await invokeCore(page,'note_save',{action:'draft',path:'A.md',body:'恢复的真实草稿',baseHash:note.data.contentHash,clientId:'ipc-recovery',clientSeq:1});expect(draft.ok).toBe(true);expect(await readFile(resolve(vault,'A.md'),'utf8')).toBe('# A');
+ await page.reload();await openVault(page,vault);await expect(page.locator('#drafts')).toContainText('恢复的真实草稿');await page.locator('#drafts').getByRole('button',{name:'恢复原位'}).click();await expect(page.locator('.cm-content')).toContainText('恢复的真实草稿');expect(await readFile(resolve(vault,'A.md'),'utf8')).toBe('恢复的真实草稿');
+ const backlinks=await invokeCore(page,'link_backlinks',{path:'A.md'});expect(backlinks.ok).toBe(true);expect(backlinks.data.items[0].sourcePath).toBe('B.md');
+ const plan=await invokeCore(page,'note_rename',{path:'A.md',newName:'C',planOnly:true});expect(plan.ok).toBe(true);expect(await readFile(resolve(vault,'B.md'),'utf8')).toBe('[[A|显示]] and A');
+ const renamed=await invokeCore(page,'note_rename',{path:'A.md',newName:'C',planOnly:false,planId:plan.data.plan.id});expect(renamed.ok).toBe(true);expect(await readFile(resolve(vault,'B.md'),'utf8')).toBe('[[C|显示]] and A');expect(await readFile(resolve(vault,'C.md'),'utf8')).toBe('恢复的真实草稿');
+ const graph=await invokeCore(page,'link_graph',{maxNodes:500});expect(graph.ok).toBe(true);expect(graph.data.edges.some((e:{from:string;to:string})=>e.from==='B.md'&&e.to==='C.md')).toBe(true);
+});
+
+test('成员二真实窗口关闭会先冲刷未保存内容',async({desktopPage:page,vault})=>{
+ const target=resolve(vault,'Close.md');await writeFile(target,'original');await openVault(page,vault);await page.getByRole('button',{name:'Close.md',exact:true}).click();await page.locator('.cm-content').click();await page.keyboard.press('Control+End');await page.keyboard.insertText(' saved on close');
+ const closed=page.waitForEvent('close',{timeout:10000});
+ await page.evaluate(async()=>{const internal=(window as unknown as {__TAURI_INTERNALS__:{invoke:(name:string,args:unknown)=>Promise<unknown>}}).__TAURI_INTERNALS__;await internal.invoke('plugin:window|close',{label:'main'});}).catch(error=>{if(!/closed|destroyed/i.test(String(error)))throw error;});
+ await closed;expect(await readFile(target,'utf8')).toBe('original saved on close');
 });

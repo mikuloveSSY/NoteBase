@@ -55,7 +55,7 @@ fn duplicate_create_never_overwrites() {
     let (dir, mut app) = setup();
     fs::write(dir.path().join("A.md"), "保留").unwrap();
     let r = call(&mut app, "note_create", json!({"title":"A"}));
-    assert_eq!(r["data"]["path"], "A (1).md");
+    assert_eq!(r["data"]["path"], "A (2).md");
     assert_eq!(fs::read_to_string(dir.path().join("A.md")).unwrap(), "保留");
 }
 #[test]
@@ -199,7 +199,7 @@ fn sanitized_creation_collisions_do_not_overwrite() {
         ("a<b>c", "a_b_c.md"),
         ("name.", "name.md"),
         ("Ａ", "A.md"),
-        ("A", "A (1).md"),
+        ("A", "A (2).md"),
     ] {
         let created = call(&mut app, "note_create", json!({"title":title}));
         assert_eq!(created["data"]["path"], expected, "{created}");

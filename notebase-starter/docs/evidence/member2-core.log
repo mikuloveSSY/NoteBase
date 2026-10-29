@@ -1,0 +1,183 @@
+
+running 3 tests
+test infra::tests::interrupted_atomic_write_preserves_original_and_cleans_temp ... ok
+test index::worker::tests::local_save_during_build_does_not_publish_ready ... ok
+test index::worker::tests::cancellation_between_file_reads_never_commits_a_ready_index ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+
+running 15 tests
+test rejects_traversal_and_reserved_names ... ok
+test unimplemented_does_not_report_success ... ok
+test invalid_utf8_is_not_overwritten ... ok
+test yaml_parses_without_removing_original ... ok
+test readonly_file_preview_cannot_be_saved_through_ipc ... ok
+test duplicate_create_never_overwrites ... ok
+test rejects_stale_client_without_writing ... ok
+test external_modification_preserved ... ok
+test create_read_save_hash_and_no_temporary_files ... ok
+test bad_yaml_remains_intact ... ok
+test pagination_and_trash_exclusion ... ok
+test saving_removes_bom_and_preserves_crlf ... ok
+test large_read_returns_a_bounded_readonly_preview_without_a_save_hash ... ok
+test sanitized_creation_collisions_do_not_overwrite ... ok
+test exactly_ten_megabytes_is_not_truncated_and_small_saves_keep_lf ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.79s
+
+
+running 2 tests
+test crash_writer_child ... ok
+test two_hundred_forced_process_exits_preserve_acknowledged_saves_and_drafts ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.38s
+
+
+running 12 tests
+test extraction_uses_frontmatter_and_shared_markdown_semantics_without_mutating_source ... ok
+test invalid_yaml_is_indexed_as_body_but_invalid_encoding_and_large_files_are_rejected ... ok
+test batch_failure_rolls_back_notes_fts_aliases_and_tags ... ok
+test schema_has_ten_logical_tables_trigram_and_readonly_wal_connections ... ok
+test update_is_idempotent_and_delete_clears_related_fts_and_link_resolution ... ok
+test partial_or_unwritable_index_never_claims_ready_and_cache_cannot_be_in_vault ... ok
+test exclusive_writer_lease_prevents_two_store_writers ... ok
+test unavailable_index_does_not_block_file_editing_and_reopen_retries_initialization ... ok
+test unknown_schema_identity_and_corruption_are_not_silently_replaced ... ok
+test empty_vault_build_is_ready_and_shutdown_stops_events_and_releases_writer ... ok
+test version_rebuild_preserves_all_four_business_state_tables ... ok
+test real_vault_background_build_batches_and_refreshes_without_changing_files ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.49s
+
+
+running 18 tests
+test bom_and_carriage_return_lines_do_not_change_markdown_indentation ... ok
+test parses_labels_anchors_and_unicode_positions_without_changing_byte_offsets ... ok
+test explicit_paths_take_precedence_over_titles_and_relative_paths_resolve ... ok
+test ignores_frontmatter_html_comments_code_and_embeds ... ok
+test parses_links_inside_markdown_containers_and_gfm_tables ... ok
+test mentions_match_chinese_prose_and_longest_alias_without_overlapping_duplicates ... ok
+test backlinks_include_each_real_occurrence_and_detect_transitive_cycles ... ok
+test mentions_return_original_byte_spans_excluding_links_code_metadata_and_self ... ok
+test renamed_paths_containing_hashes_round_trip_without_losing_the_anchor ... ok
+test unicode_targets_without_extensions_and_combining_mentions_keep_valid_spans ... ok
+test rename_preserves_raw_escaped_labels_whitespace_and_anchor_only_links ... ok
+test rename_rewrites_resolved_targets_only_and_preserves_every_other_byte ... ok
+test normalizes_separators_unicode_and_case_without_permitting_vault_escape ... ok
+test rename_uses_the_selected_ambiguous_candidate_instead_of_text_matching ... ok
+test ambiguity_is_reported_even_when_the_nearest_candidate_is_preferred ... ok
+test escaped_delimiters_even_backslashes_and_unmatched_markup_are_handled ... ok
+test graph_is_deterministic_bounded_and_keeps_the_requested_neighborhood ... ok
+test graph_caps_total_nodes_at_five_hundred_and_honors_zero ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+
+running 5 tests
+test draft_acknowledgement_does_not_overwrite_authoritative_note ... ok
+test backlinks_and_mentions_are_real_current_file_data ... ok
+test soft_delete_restores_without_overwriting_a_new_same_name_note ... ok
+test metadata_patch_retains_body_and_custom_fields ... ok
+test rename_preview_is_readonly_and_execution_rewrites_only_real_links ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+
+running 8 tests
+test private_state_may_not_be_configured_inside_the_vault ... ok
+test malformed_rename_state_is_rejected_without_poisoning_app ... ok
+test renaming_to_the_existing_name_is_a_confirmed_noop ... ok
+test explicit_conflict_choice_rechecks_disk_version ... ok
+test attachment_copy_is_relative_and_collision_safe ... ok
+test invalid_metadata_patch_and_stale_rename_leave_files_intact ... ok
+test a_saved_revision_cannot_delete_a_newer_draft ... ok
+test restart_recovers_draft_as_copy_when_disk_changed ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+
+running 10 tests
+test memory_store_roundtrips_removes_and_lists_in_key_order ... ok
+test invalid_buckets_and_keys_are_rejected ... ok
+test state_keys_reject_windows_devices_and_overlong_components ... ok
+test remove_is_idempotent_and_rejects_non_files ... ok
+test corrupt_json_is_an_error_and_remains_on_disk ... ok
+test open_creates_and_checks_all_missing_parent_directories ... ok
+test fs_store_persists_state_and_leaves_index_db_untouched ... ok
+test windows_junctions_in_state_paths_are_rejected ... ok
+test oversized_json_is_an_error_and_remains_on_disk ... ok
+test fs_store_accepts_ten_mib_body_after_json_escaping ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.44s
+
+
+running 8 tests
+test render_template_replaces_only_the_three_supported_placeholders ... ok
+test inspect_reports_fields_and_exact_body_start_for_crlf ... ok
+test invalid_existing_frontmatter_is_never_rewritten_by_patch ... ok
+test tag_matches_exact_tags_and_parent_segments ... ok
+test patch_rejects_wrong_metadata_types_without_returning_text ... ok
+test patch_retains_custom_fields_and_body_bytes_while_preserving_crlf ... ok
+test patch_deletes_null_fields_and_inserts_frontmatter_when_missing ... ok
+test inspect_treats_invalid_and_duplicate_yaml_as_located_errors ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test externally_changed_pending_reference_is_preserved_during_resume ... ok
+test completed_source_self_link_may_be_edited_before_remaining_recovery ... ok
+test user_edits_to_completed_references_do_not_block_remaining_recovery ... ok
+test interrupted_rename_survives_restart_and_is_idempotent ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+
+running 13 tests
+test new_titles_are_sanitized_without_accepting_empty_input ... ok
+test path_rules_cover_unicode_devices_separators_and_lengths ... ok
+test full_path_limit_is_checked_before_creating_a_file ... ok
+test large_file_read_is_bounded_and_write_is_rejected ... ok
+test windows_sharing_violation_reports_retryable_error_and_cleans_temp ... ok
+test duplicate_creation_and_rename_never_overwrite_existing_content ... ok
+test failed_rename_and_missing_parent_leave_source_untouched ... ok
+test readonly_file_is_reported_and_replacement_is_refused ... ok
+test oversized_replacement_does_not_touch_a_small_file ... ok
+test directories_cannot_be_read_deleted_or_replaced_as_notes ... ok
+test create_stat_rename_and_delete_use_the_same_port ... ok
+test listing_is_scoped_and_only_excludes_special_directories_at_vault_root ... ok
+test windows_junction_cannot_escape_vault ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+
+running 1 test
+test thirty_day_cleanup_uses_deletion_time_not_old_note_mtime ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+[stderr]
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling notebase-core v0.3.0 (D:\C++\CScode\临时工作区\软件工程\NoteBase\notebase-starter\crates\notebase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.12s
+     Running unittests src\lib.rs (crates\notebase-core\target\debug\deps\notebase_core-f6bcf7bf201b367f.exe)
+     Running tests\core.rs (crates\notebase-core\target\debug\deps\core-245ed0b0f1beb0bd.exe)
+     Running tests\crash_recovery.rs (crates\notebase-core\target\debug\deps\crash_recovery-da70b6b001a0eef9.exe)
+     Running tests\index.rs (crates\notebase-core\target\debug\deps\index-dc0af23dcc5fcc27.exe)
+     Running tests\links.rs (crates\notebase-core\target\debug\deps\links-8be8a37d76da493d.exe)
+     Running tests\member2.rs (crates\notebase-core\target\debug\deps\member2-bce8d5f0f385de26.exe)
+     Running tests\note_lifecycle.rs (crates\notebase-core\target\debug\deps\note_lifecycle-139f73c29e124f73.exe)
+     Running tests\note_state.rs (crates\notebase-core\target\debug\deps\note_state-f00279ce9267a7c7.exe)
+     Running tests\organization.rs (crates\notebase-core\target\debug\deps\organization-e03f591fa623ba7d.exe)
+     Running tests\rename_recovery.rs (crates\notebase-core\target\debug\deps\rename_recovery-ed0c0f49d389404c.exe)
+     Running tests\storage.rs (crates\notebase-core\target\debug\deps\storage-0270674d429638af.exe)
+     Running tests\trash_retention.rs (crates\notebase-core\target\debug\deps\trash_retention-75a7fbbf9806aa75.exe)
+   Doc-tests notebase_core

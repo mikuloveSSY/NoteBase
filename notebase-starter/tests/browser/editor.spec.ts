@@ -12,8 +12,8 @@ test('演示模式编辑 保存并重新打开',async({page})=>{
 test('新建同名笔记生成独立路径 刷新重置演示',async({page})=>{
  await page.goto('/');await expect(page.locator('#new')).toBeEnabled();
  page.once('dialog',dialog=>dialog.accept('欢迎'));await page.locator('#new').click();
- await expect(page.locator('#path')).toHaveText('欢迎 (1).md');
- await page.reload();await expect(page.getByRole('button',{name:'欢迎 (1).md',exact:true})).toHaveCount(0);
+ await expect(page.locator('#path')).toHaveText('欢迎 (2).md');
+ await page.reload();await expect(page.getByRole('button',{name:'欢迎 (2).md',exact:true})).toHaveCount(0);
 });
 
 test('修正系统保留名并向用户说明实际路径',async({page})=>{
