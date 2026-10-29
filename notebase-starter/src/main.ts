@@ -9,11 +9,12 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
 <aside><div class="brand"><b>N</b><div>NoteBase<small>本地优先 · Markdown</small></div></div>
 <label class="field">笔记库目录<input id="vaultPath" placeholder="例如 D:\\Notes" aria-label="笔记库绝对路径"></label>
 <button id="open">打开已有文件夹</button><div class="section-title">笔记 <button id="new" aria-label="新建笔记">＋ 新建</button></div>
+<label class="field">搜索笔记<input id="searchQuery" aria-label="搜索笔记" placeholder='关键词、title:标题、tag:标签'></label><button id="searchButton">搜索</button><div id="searchInfo" role="status"></div><nav id="searchResults" aria-label="搜索结果"></nav><button id="searchMore" hidden>更多搜索结果</button>
 <nav id="notes" aria-label="笔记列表"></nav><button id="more" hidden>加载更多笔记</button><button id="refresh">刷新文件列表</button><div class="sidebar-foot">文件是唯一数据源<br>主干版本 ${version}</div></aside>
 <main><header><div><span class="eyebrow">工作空间</span><h1 id="title">选择或新建一篇笔记</h1><div id="path" class="muted">从左侧打开已有的 Markdown 文件夹</div></div><div class="actions"><span id="dirty">未打开</span><button id="save" class="primary" disabled>保存 Ctrl+S</button></div></header>
 <div id="mode" class="notice"></div><div id="readNotice" class="notice" role="status" hidden></div><div class="editor-bar"><span>Markdown 源文</span><span>CodeMirror 6 · 手动保存</span></div><section id="editor" aria-label="Markdown 编辑器"></section>
 <footer><span id="status" role="status" aria-live="polite">准备就绪</span><span id="count">0 字符</span></footer></main>
-<aside class="right"><h2>索引状态</h2><p id="indexStatus" role="status">打开笔记库后建立索引</p><p class="muted">索引在笔记库外保存。当前版本在打开库时构建；编辑后重新打开库可刷新。全文检索尚未接入。</p><h2>工程进度</h2><div class="feature done">笔记库与文件列表</div><div class="feature done">新建 · 读取 · 手动保存</div><div class="feature">自动保存与崩溃恢复 待接入</div><div class="feature">全文检索与链接 待接入</div><div class="feature">渲染与导出 待接入</div><div class="feature">备份与同步 待接入</div><h2>四人接入位置</h2><p>① 存储与检索<br>② 编辑与知识组织<br>③ 导出与数据保障<br>④ 界面与集成</p><p class="muted">详细入口和交接要求见工程 docs 目录。</p></aside>`;
+<aside class="right"><h2>索引状态</h2><p id="indexStatus" role="status">打开笔记库后建立索引</p><p class="muted">索引在笔记库外保存。当前版本在打开库时构建；编辑后重新打开库可刷新。可通过左侧输入框检索笔记。</p><h2>工程进度</h2><div class="feature done">笔记库与文件列表</div><div class="feature done">新建 · 读取 · 手动保存</div><div class="feature">自动保存与崩溃恢复 待接入</div><div class="feature">全文检索已接入 · 链接待接入</div><div class="feature">渲染与导出 待接入</div><div class="feature">备份与同步 待接入</div><h2>四人接入位置</h2><p>① 存储与检索<br>② 编辑与知识组织<br>③ 导出与数据保障<br>④ 界面与集成</p><p class="muted">详细入口和交接要求见工程 docs 目录。</p></aside>`;
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 let active:NoteContent|null=null,dirty=false,busy=false,opened=false,loading=false;
 let nextCursor:string|null=null;
@@ -51,7 +52,7 @@ function showReadNotice(note:NoteContent){
  $('readNotice').textContent=messages.join(' ');$('readNotice').hidden=!messages.length;
 }
 async function read(path:string){const next=await call<NoteContent>('note_read',{path,includeRaw:true});active=next;loading=true;view.dispatch({changes:{from:0,to:view.state.doc.length,insert:next.body}});loading=false;dirty=false;$('title').textContent=next.title;$('path').textContent=next.path;showReadNotice(next);markSelected();status((next.readOnly?'已只读打开 ':'已打开 ')+path);}
-async function open(){if(busy||!discard())return;await run(async()=>{await call('vault_open',{path:$<HTMLInputElement>('vaultPath').value});opened=true;active=null;dirty=false;loading=true;view.dispatch({changes:{from:0,to:view.state.doc.length,insert:''}});loading=false;$('title').textContent='选择或新建一篇笔记';$('path').textContent='Markdown 文件库';$('readNotice').hidden=true;await list();status('笔记库已打开');});}
+async function open(){if(busy||!discard())return;await run(async()=>{await call('vault_open',{path:$<HTMLInputElement>('vaultPath').value});opened=true;document.getElementById("searchResults")!.replaceChildren();document.getElementById("searchInfo")!.textContent='';document.getElementById("searchMore")!.hidden=true;active=null;dirty=false;loading=true;view.dispatch({changes:{from:0,to:view.state.doc.length,insert:''}});loading=false;$('title').textContent='选择或新建一篇笔记';$('path').textContent='Markdown 文件库';$('readNotice').hidden=true;await list();status('笔记库已打开');});}
 async function save(){if(busy||!active||!dirty||active.readOnly)return;await run(async()=>{const n=active!,result=await call<SaveResult>('note_save',{path:n.path,body:view.state.doc.toString(),baseHash:n.contentHash,expectedMtimeMs:n.mtimeMs});active={...n,contentHash:result.contentHash,mtimeMs:result.mtimeMs,sizeBytes:result.bytesWritten};dirty=false;status(result.warnings.join('；')||'已写入磁盘');});}
 const mode=$('mode');mode.textContent=desktopMode?'桌面模式：写入所选文件夹中的真实 .md 文件。基础版尚无自动保存，请主动保存。':'浏览器演示：仅使用内存数据，刷新即重置，不读写本地磁盘。';
 $('open').addEventListener('click',()=>void open());$('save').addEventListener('click',()=>void save());
@@ -73,3 +74,14 @@ async function pollIndex(){
  window.setTimeout(()=>void pollIndex(),1000);
 }
 void pollIndex();
+let searchCursor:string|null=null,searchText='';
+async function searchNotes(more=false){await run(async()=>{
+ if(!desktopMode)throw new Error('全文检索需要打开桌面文件库');
+ const query=more?searchText:$<HTMLInputElement>('searchQuery').value;
+ const result=await call<{items:{path:string;title:string;snippet:string}[];nextCursor:string|null;totalApprox:number;degraded:boolean}>('search',{query,limit:50,sort:'relevance',cursor:more?searchCursor:null});
+ if(!more)$('searchResults').replaceChildren();
+ for(const item of result.items){const button=document.createElement('button');button.className='note';button.textContent=item.title+' · '+item.path;button.title=item.snippet.replace(/<\/?b>/g,'');button.addEventListener('click',()=>{if(busy||!discard())return;void run(()=>read(item.path));});$('searchResults').append(button);}
+ searchText=query;searchCursor=result.nextCursor;$('searchMore').hidden=!searchCursor;$('searchInfo').textContent=`${result.totalApprox} 条结果`+(result.degraded?' · 短查询扫描':'');
+});}
+$('searchButton').addEventListener('click',()=>void searchNotes());$('searchMore').addEventListener('click',()=>void searchNotes(true));
+$('searchQuery').addEventListener('keydown',event=>{if(event.key==='Enter')void searchNotes();});

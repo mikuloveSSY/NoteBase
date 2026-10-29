@@ -92,6 +92,13 @@ impl App {
                 self.store()?;
                 Ok(serde_json::to_value(self.index_status()).expect("serializable index status"))
             }
+            "search" => {
+                self.store()?;
+                self.index
+                    .as_ref()
+                    .ok_or_else(|| crate::index::unavailable("未配置索引"))?
+                    .search(p)
+            }
             "note_list" => {
                 let prefix = p.get("dirPrefix").and_then(Value::as_str).unwrap_or("");
                 domain::validate_rel(prefix, true)?;

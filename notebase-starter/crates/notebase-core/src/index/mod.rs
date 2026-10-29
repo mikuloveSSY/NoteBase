@@ -1,5 +1,6 @@
 //! 索引基础端口；查询语法、链接业务和增量队列在后续迭代接入。
 pub mod extract;
+pub mod search;
 pub mod sqlite;
 pub mod worker;
 
@@ -67,6 +68,7 @@ impl Default for IndexStatus {
 
 // 本版落实写入、删除、读取和状态；不为尚未实现的检索/链接提供假结果。
 pub trait IndexStore {
+    fn search(&self, query: &serde_json::Value) -> Result<serde_json::Value>;
     fn upsert_batch(&self, notes: &[NoteRecord]) -> Result<()>;
     fn remove(&self, paths: &[RelPath]) -> Result<()>;
     fn get(&self, path: &RelPath) -> Result<Option<NoteRecord>>;
@@ -75,6 +77,7 @@ pub trait IndexStore {
 
 // 应用层仅依赖会话端口；后台任务不借用 App 的全局锁。
 pub trait IndexSession: Send {
+    fn search(&self, query: &serde_json::Value) -> Result<serde_json::Value>;
     fn status(&self) -> IndexStatus;
     fn invalidate(&self);
     fn refresh(&self) -> bool;

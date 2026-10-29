@@ -66,6 +66,15 @@ const test = base.extend<{ desktopPage: Page; vault: string }>({
 
 test.skip(process.platform !== 'win32', '真实桌面测试使用 Windows WebView2');
 
+test('真实桌面搜索中文并打开命中笔记',async({desktopPage:page,vault})=>{
+ await writeFile(resolve(vault,'搜索.md'),'# 数据结构\n跨词边界的动态规划内容');await openVault(page,vault);
+ await expect(page.locator('#indexStatus')).toContainText('索引已就绪');
+ await page.getByLabel('搜索笔记',{exact:true}).fill('态规划');await page.getByRole('button',{name:'搜索',exact:true}).click();
+ await expect(page.locator('#searchInfo')).toContainText('1 条结果');await page.locator('#searchResults button').click();await expect(page.locator('#path')).toHaveText('搜索.md');
+ await page.getByLabel('搜索笔记',{exact:true}).fill('动态');await page.getByRole('button',{name:'搜索',exact:true}).click();await expect(page.locator('#searchInfo')).toContainText('短查询扫描');
+ await page.getByLabel('搜索笔记',{exact:true}).fill('不存在');await page.getByRole('button',{name:'搜索',exact:true}).click();await expect(page.locator('#searchInfo')).toContainText('0 条结果');
+});
+
 async function openVault(page: Page, vault: string) {
   await page.getByLabel('笔记库绝对路径').fill(vault);
   await page.getByRole('button', { name: '打开已有文件夹' }).click();

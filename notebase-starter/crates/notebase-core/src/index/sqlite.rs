@@ -244,6 +244,9 @@ fn upsert(tx: &Transaction<'_>, record: &NoteRecord) -> Result<()> {
 }
 
 impl IndexStore for SqliteIndexStore {
+    fn search(&self, query: &serde_json::Value) -> Result<serde_json::Value> {
+        self.read(|conn| Ok(super::search::search(conn, query)))?
+    }
     fn upsert_batch(&self, notes: &[NoteRecord]) -> Result<()> {
         if notes.len() > BATCH_SIZE {
             return Err(unavailable("单次索引事务不得超过 200 篇"));

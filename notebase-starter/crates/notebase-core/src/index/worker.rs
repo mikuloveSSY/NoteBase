@@ -26,6 +26,7 @@ struct State {
     active: bool,
 }
 pub struct BackgroundIndex {
+    db_path: PathBuf,
     state: Arc<Mutex<State>>,
     cancelled: Arc<AtomicBool>,
     refresh: SyncSender<()>,
@@ -89,6 +90,7 @@ pub fn cache_path(data_root: &Path, vault: &Path, vault_id: &str) -> Result<Path
 
 impl BackgroundIndex {
     pub fn start(data_root: PathBuf, vault: String, vault_id: String, events: EventSink) -> Self {
+        let db_path = data_root.join("vaults").join(&vault_id).join("index.db");
         let state = Arc::new(Mutex::new(State {
             status: IndexStatus {
                 state: IndexState::Rebuilding,
@@ -155,6 +157,7 @@ impl BackgroundIndex {
             }
         };
         Self {
+            db_path,
             state,
             cancelled,
             refresh,
@@ -184,6 +187,27 @@ impl Drop for BackgroundIndex {
     }
 }
 impl IndexSession for BackgroundIndex {
+    fn search(&self, query: &Value) -> Result<Value> {
+        let generation = {
+            let state = self
+                .state
+                .lock()
+                .map_err(|_| unavailable("索引状态锁异常"))?;
+            if state.status.state != IndexState::Ready {
+                return Err(unavailable("索引未就绪或已过期，请重新打开库"));
+            }
+            state.generation
+        };
+        let result = super::search::search_path(&self.db_path, query)?;
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| unavailable("索引状态锁异常"))?;
+        if state.generation != generation || state.status.state != IndexState::Ready {
+            return Err(unavailable("查询期间索引已变化，请重试"));
+        }
+        Ok(result)
+    }
     fn status(&self) -> IndexStatus {
         self.state
             .lock()
