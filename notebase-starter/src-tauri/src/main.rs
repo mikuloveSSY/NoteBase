@@ -67,10 +67,29 @@ command!(settings_set);
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
+            // Tauri creates its default WebView directory before the WebView2 env
+            // override takes effect. Apply the explicit profile at construction.
+            // https://docs.rs/tauri/2.12.5/tauri/struct.WebviewWindowBuilder.html#method.data_directory
+            let window_config = app
+                .config()
+                .app
+                .windows
+                .first()
+                .ok_or("missing main window configuration")?;
+            let mut window = tauri::WebviewWindowBuilder::from_config(app.handle(), window_config)?;
+            if let Some(profile) = std::env::var_os("WEBVIEW2_USER_DATA_FOLDER") {
+                let profile = std::path::PathBuf::from(profile);
+                if !profile.is_absolute() {
+                    return Err("WebView profile must be an absolute path".into());
+                }
+                window = window.data_directory(profile);
+            }
+            window.build()?;
             // 可重定位缓存以支持独立测试/便携开发；后台仍强制校验绝对路径与库外位置。
-            let data_root = std::env::var_os("NOTEBASE_DATA_DIR")
-                .map(std::path::PathBuf::from)
-                .unwrap_or(app.path().app_data_dir()?);
+            let data_root = match std::env::var_os("NOTEBASE_DATA_DIR") {
+                Some(path) => std::path::PathBuf::from(path),
+                None => app.path().app_data_dir()?,
+            };
             let handle = app.handle().clone();
             let events = Arc::new(move |name: &str, value: serde_json::Value| {
                 let _ = handle.emit(&notebase_core::domain::transport_event_name(name), value);

@@ -1,40 +1,35 @@
-use crate::domain::NOTE_SIZE_LIMIT as LIMIT;
-use crate::domain::{
-    self, field, AppError, NoteStore, RelPath, Request, Response, Result, StoreError,
-};
+use crate::domain::{self, field, AppError, NoteStore, RelPath, Request, Response, Result};
 use crate::index::{IndexSession, IndexStatus};
+use crate::migration::VaultLocation;
+use crate::note_files::NoteFiles;
+use crate::note_service::{content_hash, NoteService};
+use crate::note_state::NoteStateStore;
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::sync::Arc;
 
 type StoreFactory = Box<dyn Fn(&str) -> Result<Box<dyn NoteStore>> + Send + Sync>;
 pub type IndexFactory = Box<dyn Fn(&str, &str) -> Box<dyn IndexSession> + Send + Sync>;
+pub type SupportFactory =
+    Box<dyn Fn(&str, &str) -> Result<(Box<dyn NoteFiles>, Box<dyn NoteStateStore>)> + Send + Sync>;
+pub type NoteEvents = Arc<dyn Fn(&str, Value) + Send + Sync>;
 pub struct App {
-    store: Option<Box<dyn NoteStore>>,
-    known: HashMap<String, String>,
+    notes: Option<NoteService>,
     factory: StoreFactory,
     index_factory: Option<IndexFactory>,
     index: Option<Box<dyn IndexSession>>,
-    location: Option<Box<dyn crate::migration::VaultLocation>>,
-}
-fn hash(bytes: &[u8]) -> String {
-    format!("sha256:{:x}", Sha256::digest(bytes))
-}
-fn title(path: &str) -> String {
-    path.rsplit('/')
-        .next()
-        .unwrap_or(path)
-        .trim_end_matches(".md")
-        .to_string()
+    support: Option<SupportFactory>,
+    events: Option<NoteEvents>,
+    location: Option<Box<dyn VaultLocation>>,
 }
 impl App {
     pub fn new(factory: StoreFactory) -> Self {
         Self {
-            store: None,
-            known: HashMap::new(),
+            notes: None,
             factory,
             index_factory: None,
             index: None,
+            support: None,
+            events: None,
             location: None,
         }
     }
@@ -42,12 +37,33 @@ impl App {
         self.index_factory = Some(factory);
         self
     }
-    pub fn with_location(mut self, location: Box<dyn crate::migration::VaultLocation>) -> Self {
+    pub fn with_location(mut self, location: Box<dyn VaultLocation>) -> Self {
         self.location = Some(location);
         self
     }
-    pub fn dispatch(&mut self, r: Request) -> Response {
-        match self.handle(&r.command, &r.payload) {
+    pub fn with_support(mut self, factory: SupportFactory) -> Self {
+        self.support = Some(factory);
+        self
+    }
+    pub fn with_events(mut self, events: NoteEvents) -> Self {
+        self.events = Some(events);
+        self
+    }
+    pub fn dispatch(&mut self, mut r: Request) -> Response {
+        if r.payload.is_object() && r.command == "note_save" && r.payload.get("clientSeq").is_none()
+        {
+            r.payload["clientSeq"] = json!(r.client_seq);
+        }
+        let result = self.handle(&r.command, &r.payload);
+        if let (Some(events), Err(error)) = (&self.events, &result) {
+            if error.code == "E_EXTERNAL_MODIFIED" {
+                events(
+                    "note.conflict",
+                    json!({"path":r.payload["path"],"clientId":r.payload["clientId"],"detail":error.detail}),
+                );
+            }
+        }
+        match result {
             Ok(data) => Response::Ok {
                 id: r.id,
                 ok: true,
@@ -60,104 +76,135 @@ impl App {
             },
         }
     }
-    fn store(&self) -> Result<&dyn NoteStore> {
-        self.store
-            .as_deref()
+    fn notes(&mut self) -> Result<&mut NoteService> {
+        self.notes
+            .as_mut()
             .ok_or_else(|| AppError::new("E_VAULT_NOT_FOUND", "请先打开笔记库"))
+    }
+    fn assemble_notes(&self, store: Box<dyn NoteStore>, id: &str) -> Result<NoteService> {
+        let support = self
+            .support
+            .as_ref()
+            .ok_or_else(|| AppError::new("E_INTERNAL", "笔记持久化端口尚未装配"))?;
+        let (files, state) = support(&store.vault_path(), id)?;
+        Ok(NoteService::new(store, files, state))
+    }
+    fn settings_get(&self, p: &Value) -> Result<Value> {
+        if let Some(keys) = p.get("keys") {
+            if keys
+                .as_array()
+                .is_none_or(|keys| keys.iter().any(|key| key.as_str() != Some("vaultPath")))
+            {
+                return Err(AppError::new("E_PATH_INVALID", "当前只支持 vaultPath 设置"));
+            }
+        }
+        let path = match &self.notes {
+            Some(notes) => Some(notes.store.vault_path()),
+            None => self
+                .location
+                .as_ref()
+                .map(|location| location.configured_path())
+                .transpose()?
+                .flatten(),
+        };
+        Ok(json!({"values":{"vaultPath":path}}))
+    }
+    fn migrate(&mut self, p: &Value) -> Result<Value> {
+        let values = p
+            .get("values")
+            .and_then(Value::as_object)
+            .ok_or_else(|| AppError::new("E_PATH_INVALID", "values 必须是对象"))?;
+        if values.len() != 1 || !values.contains_key("vaultPath") {
+            return Err(AppError::new(
+                "E_PATH_INVALID",
+                "当前只实现 vaultPath 迁移，其他设置尚未实现",
+            ));
+        }
+        let target = field(&p["values"], "vaultPath")?;
+        let source = self.notes()?.store.vault_path();
+        let location = self
+            .location
+            .as_ref()
+            .ok_or_else(|| AppError::new("E_INTERNAL", "未配置库迁移适配器"))?;
+        let copied = location.copy_verified(&source, target)?;
+        let store = (self.factory)(&copied)?;
+        store.list(&RelPath::root())?;
+        let vault = store.vault_path();
+        let id = content_hash(vault.as_bytes())[7..23].to_owned();
+        let notes = self.assemble_notes(store, &id)?;
+        // Verify copied private state before committing the new configured path.
+        notes.list(&json!({"scope":"drafts"}))?;
+        notes.list(&json!({"scope":"renames"}))?;
+        location.save_path(&copied)?;
+        self.index = None;
+        self.index = self
+            .index_factory
+            .as_ref()
+            .map(|factory| factory(&vault, &id));
+        self.notes = Some(notes);
+        Ok(json!({"ok":true}))
     }
     fn handle(&mut self, command: &str, p: &Value) -> Result<Value> {
         match command {
-            "settings_get" => {
-                if let Some(keys) = p.get("keys") {
-                    if keys
-                        .as_array()
-                        .is_none_or(|keys| keys.iter().any(|k| k.as_str() != Some("vaultPath")))
-                    {
-                        return Err(AppError::new("E_PATH_INVALID", "当前只支持 vaultPath 设置"));
-                    }
-                }
-                let path = if let Some(store) = &self.store {
-                    Some(store.vault_path())
-                } else {
-                    self.location
-                        .as_ref()
-                        .map(|l| l.configured_path())
-                        .transpose()?
-                        .flatten()
-                };
-                Ok(json!({"values":{"vaultPath":path}}))
-            }
-            "settings_set" => {
-                let values = p
-                    .get("values")
-                    .and_then(Value::as_object)
-                    .ok_or_else(|| AppError::new("E_PATH_INVALID", "values 必须是对象"))?;
-                if values.len() != 1 || !values.contains_key("vaultPath") {
-                    return Err(AppError::new(
-                        "E_PATH_INVALID",
-                        "当前只实现 vaultPath 迁移，其他设置尚未实现",
-                    ));
-                }
-                let target = field(&p["values"], "vaultPath")?;
-                let source = self.store()?.vault_path();
-                let location = self
-                    .location
-                    .as_ref()
-                    .ok_or_else(|| AppError::new("E_INTERNAL", "未配置库迁移适配器"))?;
-                let copied = location.copy_verified(&source, target)?;
-                let store = (self.factory)(&copied)?;
-                store.list(&RelPath::root())?;
-                location.save_path(&copied)?;
-                self.index = None;
-                let id = hash(store.vault_path().as_bytes())[7..23].to_owned();
-                self.index = self
-                    .index_factory
-                    .as_ref()
-                    .map(|factory| factory(&store.vault_path(), &id));
-                self.store = Some(store);
-                self.known.clear();
-                Ok(json!({"ok":true}))
-            }
+            "settings_get" => return self.settings_get(p),
+            "settings_set" => return self.migrate(p),
             "vault_open" => {
                 let store = (self.factory)(field(p, "path")?)?;
+                let vault = store.vault_path();
                 let count = store.list(&RelPath::root())?.len();
-                let id = hash(store.vault_path().as_bytes())[7..23].to_string();
-                let same_vault = self
-                    .store
+                let id = content_hash(vault.as_bytes())[7..23].to_owned();
+                let notes = self.assemble_notes(store, &id)?;
+                let same = self
+                    .notes
                     .as_ref()
-                    .is_some_and(|old| old.vault_path() == store.vault_path());
+                    .is_some_and(|old| old.store.vault_path() == vault);
                 let reused = self
                     .index
                     .as_ref()
-                    .is_some_and(|index| same_vault && index.refresh());
+                    .is_some_and(|index| same && index.refresh());
                 if !reused {
-                    // 旧会话取消后不再发事件；后台任务始终绑定自己的库路径。
                     self.index = None;
                     self.index = self
                         .index_factory
                         .as_ref()
-                        .map(|factory| factory(&store.vault_path(), &id));
+                        .map(|factory| factory(&vault, &id));
                 }
-                self.store = Some(store);
-                self.known.clear();
-                Ok(json!({"vaultId":id,"noteCount":count}))
+                let cleanup = notes.expire_trash(crate::index::now_ms());
+                if let (Some(events), Ok(count)) = (&self.events, &cleanup) {
+                    if *count > 0 {
+                        events(
+                            "note.changed",
+                            json!({"kind":"trash.cleaned","count":count}),
+                        );
+                    }
+                }
+                self.notes = Some(notes);
+                return Ok(
+                    json!({"vaultId":id,"noteCount":count,"warnings":cleanup.err().map(|e|vec![format!("回收站清理未完成：{}",e.message)]).unwrap_or_default()}),
+                );
             }
-            "vault_info" => Ok(
-                json!({"vaultPath":self.store()?.vault_path(),"indexState":self.index_status().state,"syncState":"disabled"}),
-            ),
+            "vault_info" => {
+                let vault = self.notes()?.store.vault_path();
+                return Ok(
+                    json!({"vaultPath":vault,"indexState":self.index_status().state,"syncState":"disabled"}),
+                );
+            }
             "index_status" => {
-                self.store()?;
-                Ok(serde_json::to_value(self.index_status()).expect("serializable index status"))
+                self.notes()?;
+                return Ok(
+                    serde_json::to_value(self.index_status()).expect("serializable index status")
+                );
             }
             "search" => {
-                self.store()?;
-                self.index
+                self.notes()?;
+                return self
+                    .index
                     .as_ref()
                     .ok_or_else(|| crate::index::unavailable("未配置索引"))?
-                    .search(p)
+                    .search(p);
             }
             "index_rebuild" => {
-                self.store()?;
+                self.notes()?;
                 if p.get("mode").and_then(Value::as_str) != Some("full") {
                     return Err(AppError::new("E_QUERY_UNSUPPORTED", "仅支持 mode=full"));
                 }
@@ -166,158 +213,21 @@ impl App {
                     .as_ref()
                     .ok_or_else(|| crate::index::unavailable("未配置索引"))?
                     .rebuild()?;
-                Ok(json!({"jobId":id}))
+                return Ok(json!({"jobId":id}));
             }
-            "note_list" => {
-                let prefix = p.get("dirPrefix").and_then(Value::as_str).unwrap_or("");
-                domain::validate_rel(prefix, true)?;
-                let limit = p
-                    .get("limit")
-                    .and_then(Value::as_u64)
-                    .unwrap_or(500)
-                    .clamp(1, 500) as usize;
-                let after = p.get("cursor").and_then(Value::as_str).unwrap_or("");
-                let root = if prefix.is_empty() {
-                    RelPath::root()
-                } else {
-                    RelPath::new(prefix)?
-                };
-                let list = self.store()?.list(&root)?;
-                let items:Vec<Value>=list.into_iter().filter(|e| e.path.as_str()>after).map(|e|json!({"title":title(&e.path),"path":e.path,"mtimeMs":e.mtime_ms,"hasAttachment":false})).collect();
-                let next = if items.len() > limit {
-                    items[limit - 1]["path"].clone()
-                } else {
-                    Value::Null
-                };
-                Ok(
-                    json!({"items":items.into_iter().take(limit).collect::<Vec<_>>(),"nextCursor":next}),
-                )
-            }
-            "note_create" => {
-                let dir = p.get("dir").and_then(Value::as_str).unwrap_or("");
-                domain::validate_rel(dir, true)?;
-                let name = domain::sanitize_title(field(p, "title")?)?;
-                for n in 0..10000 {
-                    let filename = if n == 0 {
-                        format!("{name}.md")
-                    } else {
-                        format!("{name} ({n}).md")
-                    };
-                    let path = if dir.is_empty() {
-                        filename
-                    } else {
-                        format!("{dir}/{filename}")
-                    };
-                    match self.store()?.create_new(&RelPath::new(&path)?) {
-                        Ok(()) => {
-                            if let Some(index) = &self.index {
-                                index.enqueue(&RelPath::new(&path)?);
-                            }
-                            return Ok(json!({"path":path}));
-                        }
-                        Err(StoreError::AlreadyExists) => continue,
-                        Err(e) => return Err(e.into()),
-                    }
-                }
-                Err(AppError::new("E_PATH_INVALID", "同名笔记过多"))
-            }
-            "note_read" => {
-                let path = field(p, "path")?;
-                let stored = self.store()?.read(&RelPath::new(path)?)?;
-                let mut preview = stored.raw.as_slice();
-                // 预览截断点可能落在 UTF-8 字符内部，去掉尾部不完整字符，不误报编码错误。
-                if stored.truncated {
-                    if let Err(error) = std::str::from_utf8(preview) {
-                        if error.error_len().is_none() {
-                            preview = &preview[..error.valid_up_to()];
-                        }
-                    }
-                }
-                let valid_encoding = std::str::from_utf8(preview).is_ok();
-                let raw_text = String::from_utf8_lossy(preview);
-                let read_only = stored.truncated || !valid_encoding || stored.read_only;
-                let body = raw_text
-                    .strip_prefix('\u{feff}')
-                    .unwrap_or(raw_text.as_ref());
-                let (frontmatter, frontmatter_error) = domain::parse_frontmatter(body);
-                // 截断预览没有全文件哈希；空值不能作为保存凭证。
-                let content_hash = if stored.truncated {
-                    String::new()
-                } else {
-                    hash(&stored.raw)
-                };
-                if read_only {
-                    self.known.remove(path);
-                } else {
-                    self.known.insert(path.into(), content_hash.clone());
-                }
-                Ok(
-                    json!({"path":path,"title":title(path),"body":body,"frontmatter":frontmatter,"frontmatterError":frontmatter_error,"contentHash":content_hash,"mtimeMs":stored.mtime_ms,"sizeBytes":stored.size_bytes,"encoding":if valid_encoding {"utf-8"} else {"unknown"},"lineEnding":if body.contains("\r\n"){"crlf"}else{"lf"},"readOnly":read_only}),
-                )
-            }
-            "note_save" => {
-                let path = field(p, "path")?;
-                let body = field(p, "body")?;
-                let base = field(p, "baseHash")?;
-                let relative = RelPath::new(path)?;
-                let stored = self.store()?.read(&relative)?;
-                if stored.truncated || stored.size_bytes > LIMIT as u64 {
-                    return Err(AppError::new(
-                        "E_FILE_TOO_LARGE",
-                        "文件超过 10 MB，不能通过基础版保存",
-                    ));
-                }
-                let old = std::str::from_utf8(&stored.raw).map_err(|_| {
-                    AppError::new(
-                        "E_ENCODING_INVALID",
-                        "源文件不是 UTF-8，只读预览不能直接保存",
-                    )
-                })?;
-                if stored.read_only {
-                    return Err(AppError::new("E_IO_PERMISSION", "文件是只读的，不能保存"));
-                }
-                let current = hash(&stored.raw);
-                let known = self
-                    .known
-                    .get(path)
-                    .ok_or_else(|| AppError::new("E_STALE_CLIENT", "请先读取笔记再保存"))?;
-                if &current != known {
-                    let mut e = AppError::new(
-                        "E_EXTERNAL_MODIFIED",
-                        "磁盘文件已修改，请重新打开并人工处理冲突",
-                    );
-                    e.detail = json!({"concurrent":base!=known});
-                    return Err(e);
-                }
-                if base != known {
-                    return Err(AppError::new(
-                        "E_STALE_CLIENT",
-                        "请求基于旧版本，请重新读取",
-                    ));
-                }
-                let normalized = body.trim_start_matches('\u{feff}').replace("\r\n", "\n");
-                let output = if old.contains("\r\n") {
-                    normalized.replace('\n', "\r\n")
-                } else {
-                    normalized
-                };
-                if output.len() > LIMIT {
-                    return Err(AppError::new("E_FILE_TOO_LARGE", "保存内容超过 10 MB"));
-                }
-                let written = self.store()?.write_atomic(&relative, output.as_bytes())?;
-                self.known.insert(path.into(), written.content_hash.clone());
-                let index_queued = self
-                    .index
-                    .as_ref()
-                    .is_some_and(|index| index.enqueue(&relative));
-                let warnings = if index_queued {
-                    vec!["版本快照尚未接入"]
-                } else {
-                    vec!["索引队列未接收任务；版本快照尚未接入"]
-                };
-                Ok(
-                    json!({"path":path,"contentHash":written.content_hash,"mtimeMs":written.mtime_ms,"bytesWritten":written.bytes_written,"snapshotCreated":false,"indexQueued":index_queued,"warnings":warnings}),
-                )
+            _ => {}
+        }
+        let now = crate::index::now_ms();
+        let mut result = match command {
+            "note_list" => self.notes()?.list(p),
+            "note_read" => self.notes()?.read(p),
+            "note_create" => self.notes()?.create(p, now),
+            "note_save" => self.notes()?.save(p, now),
+            "note_delete" => self.notes()?.delete(p, now),
+            "note_restore" => self.notes()?.restore(p, now),
+            "note_rename" => self.notes()?.rename(p, now),
+            "link_backlinks" | "link_mentions" | "link_graph" => {
+                self.notes()?.link_query(command, p)
             }
             other => Err(AppError::new(
                 "E_INTERNAL",
@@ -327,7 +237,41 @@ impl App {
                     format!("未知命令 {other}")
                 },
             )),
+        };
+        // A partial rename can commit some writes before returning an error. Drain
+        // actual mutations independently of the command's success response.
+        let changed = self
+            .notes
+            .as_mut()
+            .map(NoteService::take_changes)
+            .unwrap_or_default();
+        let mut queued = !changed.is_empty();
+        for path in &changed {
+            let accepted = self.index.as_ref().is_some_and(|index| index.enqueue(path));
+            queued &= accepted;
+            if !accepted {
+                if let Some(index) = &self.index {
+                    index.invalidate();
+                }
+            }
+            if let Some(events) = &self.events {
+                events(
+                    "note.changed",
+                    json!({"path":path.as_str(),"kind":command,"source":"local","clientId":p["clientId"]}),
+                );
+            }
         }
+        if let Ok(data) = &mut result {
+            if data.get("indexQueued").is_some() {
+                data["indexQueued"] = json!(queued);
+                if !changed.is_empty() && !queued {
+                    if let Some(warnings) = data.get_mut("warnings").and_then(Value::as_array_mut) {
+                        warnings.push(json!("索引增量更新未入队，请稍后重新打开笔记库"));
+                    }
+                }
+            }
+        }
+        result
     }
     fn index_status(&self) -> IndexStatus {
         self.index

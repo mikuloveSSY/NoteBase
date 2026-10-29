@@ -1,0 +1,7 @@
+本轮工具输出摘要（不是完整原始日志）
+Command: bash ../../.notebase-tools/rust/with-rust.sh npm run desktop:build -- --no-bundle
+Package: notebase-starter@0.6.0
+TypeScript + Vite: passed; 41 modules transformed; built in 1.87s
+Main chunk: 664.05 kB; gzip 228.44 kB; existing >500kB warning retained
+Rust release: Finished release profile in 25.39s; exit code 0
+Built application: src-tauri/target/release/notebase.exe

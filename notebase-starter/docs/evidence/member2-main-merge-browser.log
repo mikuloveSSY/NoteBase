@@ -1,0 +1,5 @@
+本轮工具输出摘要（不是完整原始日志）
+Command: PLAYWRIGHT_CHANNEL=msedge CHOKIDAR_USEPOLLING=true npm run test:e2e -- --workers=1
+Package: notebase-starter@0.6.0
+Result: 12 passed (11.4s), exit code 0
+最终侧栏布局与外改提示修复后运行，保留两侧6+6条浏览器回归。

@@ -1,8 +1,8 @@
 # NoteBase
 
-当前软件版本为 **0.6.0，成员一重建与迁移**。可运行工程位于 [notebase-starter](notebase-starter/README.md)，原始 0.1.0 ZIP 保留归档。
+当前软件版本为 **0.6.0，已整合成员一与成员二功能**。可运行工程位于 [notebase-starter](notebase-starter/README.md)，原始 0.1.0 ZIP 保留归档。
 
-本版在文件存储闭环上增加库外 SQLite 索引、后台构建和索引状态显示。已接入中文检索；已接入增量监视；编辑自动保存等尚未实现。
+已接入中文搜索、增量索引与文件监视、后台重建、库迁移，以及自动保存、持久草稿恢复、回收站、属性模板和双链知识组织。合并后的接口与验证见[主干合并记录](notebase-starter/docs/成员二主干合并验证.md)。
 
 - [版本说明](CHANGELOG.md)
 - [成员一开发计划](docs/成员一开发计划.md)
