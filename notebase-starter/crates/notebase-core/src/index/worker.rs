@@ -20,12 +20,30 @@ use std::{
 };
 
 pub type EventSink = Arc<dyn Fn(&str, Value) + Send + Sync>;
+#[derive(Clone, Copy)]
+pub struct WorkerOptions {
+    pub native_watch: bool,
+    pub reconcile_interval: Duration,
+    pub debounce: Duration,
+    pub queue_capacity: usize,
+}
+impl Default for WorkerOptions {
+    fn default() -> Self {
+        Self {
+            native_watch: true,
+            reconcile_interval: Duration::from_secs(300),
+            debounce: Duration::from_millis(150),
+            queue_capacity: super::queue::QUEUE_CAPACITY,
+        }
+    }
+}
 struct State {
     status: IndexStatus,
     generation: u64,
     active: bool,
 }
 pub struct BackgroundIndex {
+    queue: Arc<super::queue::IndexQueue>,
     db_path: PathBuf,
     state: Arc<Mutex<State>>,
     cancelled: Arc<AtomicBool>,
@@ -90,6 +108,15 @@ pub fn cache_path(data_root: &Path, vault: &Path, vault_id: &str) -> Result<Path
 
 impl BackgroundIndex {
     pub fn start(data_root: PathBuf, vault: String, vault_id: String, events: EventSink) -> Self {
+        Self::start_with_options(data_root, vault, vault_id, events, WorkerOptions::default())
+    }
+    pub fn start_with_options(
+        data_root: PathBuf,
+        vault: String,
+        vault_id: String,
+        events: EventSink,
+        options: WorkerOptions,
+    ) -> Self {
         let db_path = data_root.join("vaults").join(&vault_id).join("index.db");
         let state = Arc::new(Mutex::new(State {
             status: IndexStatus {
@@ -101,6 +128,9 @@ impl BackgroundIndex {
         }));
         let cancelled = Arc::new(AtomicBool::new(false));
         let (refresh, receiver) = mpsc::sync_channel(1);
+        let queue = Arc::new(super::queue::IndexQueue::new(options.queue_capacity));
+        let work_queue = queue.clone();
+        let wake = refresh.clone();
         let state2 = state.clone();
         let cancel2 = cancelled.clone();
         let events2 = events.clone();
@@ -125,17 +155,44 @@ impl BackgroundIndex {
                         }
                     };
                     let store = FsStore::open(&vault)?;
+                    let watcher_failed=Arc::new(AtomicBool::new(false));
+                    let mut watcher=if options.native_watch{
+                        match super::watcher::start(Path::new(&store.vault_path()),work_queue.clone(),wake,watcher_failed.clone()){
+                            Ok(watcher)=>Some(watcher),Err(error)=>{work_queue.reconcile(Some(format!("原生监听不可用，已启用周期对账：{error}")));None}
+                        }
+                    }else{work_queue.reconcile(Some("原生监听已禁用，使用周期对账".into()));None};
+                    if let Err(error)=build(&index,&store,&state2,&cancel2,&events2){let _=index.mark_offline();report_error(&state2,&events2,error);}
+                    work_queue.reconcile(None);
+                    let mut invalid=std::collections::BTreeSet::new();let mut last_reconcile=Instant::now();
                     loop {
                         if cancel2.load(Ordering::Acquire) {
                             return Ok(());
                         }
-                        if let Err(error) = build(&index, &store, &state2, &cancel2, &events2) {
-                            let _ = index.mark_offline();
-                            report_error(&state2, &events2, error);
+                        if watcher_failed.swap(false,Ordering::AcqRel){watcher=None;}
+                        if last_reconcile.elapsed()>=options.reconcile_interval{work_queue.reconcile(None);last_reconcile=Instant::now();}
+                        if let Some(work)=work_queue.take(options.debounce){
+                            let full=work.reconcile;
+                            if let Some(warning)=&work.warning{let state=state2.lock().unwrap();if state.active{events2("error.raised",json!({"code":"E_INDEX_UNAVAILABLE","message":warning,"detail":{"pollIntervalMs":options.reconcile_interval.as_millis() as u64}}));}}
+                            {let mut state=state2.lock().unwrap();state.status.state=IndexState::Rebuilding;state.generation+=1;emit_state(&state,&events2);}
+                            if full{last_reconcile=Instant::now();}
+                            match super::incremental::apply(&index,&store,work,&mut invalid,&cancel2){
+                                Ok(changes)=>{
+                                    let mut state=state2.lock().unwrap();
+                                    if !state.active||cancel2.load(Ordering::Acquire){return Ok(());}
+                                    if invalid.is_empty()&&!work_queue.pending(){index.finish_increment(full)?;}else{index.mark_offline()?;}
+                                    state.status=index.status()?;emit_state(&state,&events2);
+                                    for change in changes{if change.source==super::queue::Source::External{events2("note.changed",json!({"path":change.path,"source":"external","contentHash":change.hash}));}}
+                                },
+                                Err(error)=>{let _=index.mark_offline();report_error(&state2,&events2,error);last_reconcile=Instant::now().checked_sub(options.reconcile_interval.saturating_sub(Duration::from_secs(1))).unwrap_or_else(Instant::now);},
+                            }
+
                         }
-                        match receiver.recv() {
+                        // 保持 watcher 生命周期覆盖整个会话。
+                        let _=&watcher;
+                        match receiver.recv_timeout(Duration::from_millis(50)) {
                             Ok(()) => {}
-                            Err(_) => return Ok(()),
+                            Err(mpsc::RecvTimeoutError::Timeout)=>{},
+                            Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(()),
                         }
                     }
                 })();
@@ -157,6 +214,7 @@ impl BackgroundIndex {
             }
         };
         Self {
+            queue,
             db_path,
             state,
             cancelled,
@@ -187,6 +245,33 @@ impl Drop for BackgroundIndex {
     }
 }
 impl IndexSession for BackgroundIndex {
+    fn enqueue(&self, path: &RelPath) -> bool {
+        let mut state = match self.state.lock() {
+            Ok(state) => state,
+            Err(_) => return false,
+        };
+        if !state.active
+            || self
+                .worker
+                .as_ref()
+                .is_none_or(|worker| worker.is_finished())
+        {
+            return false;
+        }
+        state.generation += 1;
+        if state.status.state != IndexState::Rebuilding {
+            state.status.state = IndexState::Offline;
+        }
+        self.queue.push(path, super::queue::Source::Local);
+        if matches!(
+            self.refresh.try_send(()),
+            Err(mpsc::TrySendError::Disconnected(()))
+        ) {
+            return false;
+        }
+        emit_state(&state, &self.events);
+        true
+    }
     fn search(&self, query: &Value) -> Result<Value> {
         let generation = {
             let state = self
@@ -225,6 +310,7 @@ impl IndexSession for BackgroundIndex {
     }
     fn refresh(&self) -> bool {
         if let Ok(mut state) = self.state.lock() {
+            self.queue.reconcile(None);
             match self.refresh.try_send(()) {
                 Ok(()) | Err(mpsc::TrySendError::Full(())) => {
                     state.generation += 1;

@@ -3,6 +3,7 @@ import { markdown } from '@codemirror/lang-markdown';
 import { Compartment, EditorState } from '@codemirror/state';
 import { call, desktopMode } from './bridge';
 import type { NoteContent, NoteEntry, SaveResult, IndexStatus } from './contracts';
+import { transportEventName } from './contracts';
 import { version } from '../package.json';
 import './style.css';
 document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
@@ -14,7 +15,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
 <main><header><div><span class="eyebrow">工作空间</span><h1 id="title">选择或新建一篇笔记</h1><div id="path" class="muted">从左侧打开已有的 Markdown 文件夹</div></div><div class="actions"><span id="dirty">未打开</span><button id="save" class="primary" disabled>保存 Ctrl+S</button></div></header>
 <div id="mode" class="notice"></div><div id="readNotice" class="notice" role="status" hidden></div><div class="editor-bar"><span>Markdown 源文</span><span>CodeMirror 6 · 手动保存</span></div><section id="editor" aria-label="Markdown 编辑器"></section>
 <footer><span id="status" role="status" aria-live="polite">准备就绪</span><span id="count">0 字符</span></footer></main>
-<aside class="right"><h2>索引状态</h2><p id="indexStatus" role="status">打开笔记库后建立索引</p><p class="muted">索引在笔记库外保存。当前版本在打开库时构建；编辑后重新打开库可刷新。可通过左侧输入框检索笔记。</p><h2>工程进度</h2><div class="feature done">笔记库与文件列表</div><div class="feature done">新建 · 读取 · 手动保存</div><div class="feature">自动保存与崩溃恢复 待接入</div><div class="feature">全文检索已接入 · 链接待接入</div><div class="feature">渲染与导出 待接入</div><div class="feature">备份与同步 待接入</div><h2>四人接入位置</h2><p>① 存储与检索<br>② 编辑与知识组织<br>③ 导出与数据保障<br>④ 界面与集成</p><p class="muted">详细入口和交接要求见工程 docs 目录。</p></aside>`;
+<aside class="right"><h2>索引状态</h2><p id="indexStatus" role="status">打开笔记库后建立索引</p><p class="muted">索引在笔记库外保存。保存和外部文件变化会自动更新索引；监听异常时每 300 秒对账。可通过左侧输入框检索笔记。</p><h2>工程进度</h2><div class="feature done">笔记库与文件列表</div><div class="feature done">新建 · 读取 · 手动保存</div><div class="feature">自动保存与崩溃恢复 待接入</div><div class="feature">全文检索已接入 · 链接待接入</div><div class="feature">渲染与导出 待接入</div><div class="feature">备份与同步 待接入</div><h2>四人接入位置</h2><p>① 存储与检索<br>② 编辑与知识组织<br>③ 导出与数据保障<br>④ 界面与集成</p><p class="muted">详细入口和交接要求见工程 docs 目录。</p></aside>`;
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 let active:NoteContent|null=null,dirty=false,busy=false,opened=false,loading=false;
 let nextCursor:string|null=null;
@@ -68,12 +69,17 @@ async function pollIndex(){
  if(!desktopMode){$('indexStatus').textContent='浏览器演示不建立磁盘索引';return;}
  if(opened){try{
   const value=await call<IndexStatus>('index_status',{});
-  const labels={ready:'索引已就绪',rebuilding:'正在构建索引',offline:'索引需刷新或存在不可索引文件',unavailable:'索引不可用'};
+  const labels={ready:'索引已就绪',rebuilding:'正在构建索引',offline:'索引更新中或存在不可索引文件',unavailable:'索引不可用'};
   $('indexStatus').textContent=`${labels[value.state]} · ${value.noteCount} 篇`+(value.progress?` · ${value.progress.done}/${value.progress.total}`:'');
+  if(externalTreeDirty&&!busy){externalTreeDirty=false;await run(()=>list());}
  }catch(error){$('indexStatus').textContent='索引不可用：'+(error instanceof Error?error.message:String(error));}}
  window.setTimeout(()=>void pollIndex(),1000);
 }
 void pollIndex();
+let externalTreeDirty=false;
+if(desktopMode){void import('@tauri-apps/api/event').then(async({listen})=>{
+ await listen<{path:string;source:string;contentHash:string}>(transportEventName('note.changed'),event=>{externalTreeDirty=true;if(active?.path===event.payload.path)status('磁盘文件已变化；当前编辑内容保留，请重新打开并确认。');});
+});}
 let searchCursor:string|null=null,searchText='';
 async function searchNotes(more=false){await run(async()=>{
  if(!desktopMode)throw new Error('全文检索需要打开桌面文件库');

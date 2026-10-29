@@ -1,7 +1,10 @@
 //! 索引基础端口；查询语法、链接业务和增量队列在后续迭代接入。
 pub mod extract;
+pub mod incremental;
+pub mod queue;
 pub mod search;
 pub mod sqlite;
+pub mod watcher;
 pub mod worker;
 
 use crate::domain::{AppError, RelPath, Result};
@@ -77,6 +80,7 @@ pub trait IndexStore {
 
 // 应用层仅依赖会话端口；后台任务不借用 App 的全局锁。
 pub trait IndexSession: Send {
+    fn enqueue(&self, path: &RelPath) -> bool;
     fn search(&self, query: &serde_json::Value) -> Result<serde_json::Value>;
     fn status(&self) -> IndexStatus;
     fn invalidate(&self);

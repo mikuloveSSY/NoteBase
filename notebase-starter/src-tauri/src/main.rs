@@ -73,7 +73,7 @@ fn main() {
                 .unwrap_or(app.path().app_data_dir()?);
             let handle = app.handle().clone();
             let events = Arc::new(move |name: &str, value: serde_json::Value| {
-                let _ = handle.emit(name, value);
+                let _ = handle.emit(&notebase_core::domain::transport_event_name(name), value);
             });
             app.manage(Arc::new(Mutex::new(notebase_core::new_indexed_app(
                 data_root, events,

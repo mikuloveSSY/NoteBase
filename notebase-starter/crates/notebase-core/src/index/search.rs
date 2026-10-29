@@ -1,5 +1,7 @@
 use crate::domain::{AppError, Result};
-use rusqlite::{params_from_iter, types::Value as SqlValue, Connection, OpenFlags};
+use rusqlite::{
+    params_from_iter, types::Value as SqlValue, Connection, OpenFlags, OptionalExtension,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -229,10 +231,22 @@ pub fn search(connection: &Connection, payload: &Value) -> Result<Value> {
             |r| r.get(0),
         )
         .map_err(|e| super::unavailable(e.to_string()))?;
+    let revision: String = tx
+        .query_row(
+            "SELECT value FROM meta WHERE key='index_revision'",
+            [],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(|e| super::unavailable(e.to_string()))?
+        .unwrap_or_default();
     let cursor = q.cursor.take();
     let fingerprint = format!(
         "{:x}",
-        Sha256::digest(format!("{build}:{}", serde_json::to_string(&q).unwrap()))
+        Sha256::digest(format!(
+            "{build}:{revision}:{}",
+            serde_json::to_string(&q).unwrap()
+        ))
     );
     let offset = if let Some(cursor) = cursor {
         let (signature, offset) = cursor.split_once(':').ok_or_else(|| syntax("无效游标"))?;

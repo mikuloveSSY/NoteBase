@@ -2,6 +2,7 @@
 export const COMMANDS = ['vault_open','vault_info','note_list','note_read','note_save','note_create','note_rename','note_delete','note_restore','search','link_backlinks','link_mentions','link_graph','index_status','index_rebuild','export_note','backup_create','backup_restore','sync_configure','sync_now','sync_status','settings_get','settings_set'] as const;
 export type Command = typeof COMMANDS[number];
 export const EVENTS = ['note.changed','note.conflict','index.progress','index.state','sync.state','conflict.detected','error.raised'] as const;
+export function transportEventName(event:typeof EVENTS[number]):string{return 'notebase:'+event.replaceAll('.','_');}
 export const ERROR_CODES = ['E_IO_DISK_FULL','E_IO_PERMISSION','E_IO_LOCKED','E_NOT_FOUND','E_EXTERNAL_MODIFIED','E_STALE_CLIENT','E_FILE_TOO_LARGE','E_ENCODING_INVALID','E_PATH_INVALID','E_INDEX_UNAVAILABLE','E_QUERY_SYNTAX','E_QUERY_UNSUPPORTED','E_SYNC_AUTH','E_SYNC_NETWORK','E_SYNC_BUSY','E_PARTIAL_RENAME','E_BACKUP_CHECKSUM','E_FORMAT_UNSUPPORTED','E_VAULT_NOT_FOUND','E_PDF_UNSUPPORTED','E_KEYMAP_CONFLICT','E_CANCELLED','E_INTERNAL'] as const;
 export interface Request {id:string;command:Command;payload:Record<string,unknown>;clientSeq:number}
 export interface AppError {code:typeof ERROR_CODES[number];message:string;detail:Record<string,unknown>;retryable:boolean}

@@ -142,7 +142,7 @@ impl App {
                     match self.store()?.create_new(&RelPath::new(&path)?) {
                         Ok(()) => {
                             if let Some(index) = &self.index {
-                                index.invalidate();
+                                index.enqueue(&RelPath::new(&path)?);
                             }
                             return Ok(json!({"path":path}));
                         }
@@ -237,11 +237,17 @@ impl App {
                 }
                 let written = self.store()?.write_atomic(&relative, output.as_bytes())?;
                 self.known.insert(path.into(), written.content_hash.clone());
-                if let Some(index) = &self.index {
-                    index.invalidate();
-                }
+                let index_queued = self
+                    .index
+                    .as_ref()
+                    .is_some_and(|index| index.enqueue(&relative));
+                let warnings = if index_queued {
+                    vec!["版本快照尚未接入"]
+                } else {
+                    vec!["索引队列未接收任务；版本快照尚未接入"]
+                };
                 Ok(
-                    json!({"path":path,"contentHash":written.content_hash,"mtimeMs":written.mtime_ms,"bytesWritten":written.bytes_written,"snapshotCreated":false,"indexQueued":false,"warnings":["索引队列与版本快照尚未接入"]}),
+                    json!({"path":path,"contentHash":written.content_hash,"mtimeMs":written.mtime_ms,"bytesWritten":written.bytes_written,"snapshotCreated":false,"indexQueued":index_queued,"warnings":warnings}),
                 )
             }
             other => Err(AppError::new(

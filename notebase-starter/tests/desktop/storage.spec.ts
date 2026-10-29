@@ -143,7 +143,7 @@ test('真实桌面拒绝覆盖外部修改', async ({ desktopPage: page, vault }
   await expect(page.locator('#dirty')).toHaveText('有未保存修改');
 });
 
-test('真实桌面在库外构建索引 保存后提示刷新且重开能更新索引', async ({ desktopPage: page, vault }, testInfo) => {
+test('真实桌面在库外构建索引 保存后自动更新并可检索', async ({ desktopPage: page, vault }, testInfo) => {
   const raw='---\ntitle: 索引标题\ntags: [数据库]\n---\n# 数据库测试\n中文连续搜索内容';
   await writeFile(resolve(vault,'索引.md'),raw);
   await openVault(page,vault);
@@ -161,10 +161,10 @@ test('真实桌面在库外构建索引 保存后提示刷新且重开能更新�
     await page.locator('.cm-content').click();await page.keyboard.press('Control+End');await page.keyboard.insertText('\n保存后的新内容');
     await page.getByRole('button',{name:'保存 Ctrl+S'}).click();
     await expect(page.locator('#dirty')).toHaveText('已保存');
-    await expect(page.locator('#indexStatus')).toContainText('索引需刷新');
-    await openVault(page,vault);
+    await expect.poll(()=>db.prepare("SELECT count(*) AS n FROM note_fts WHERE note_fts MATCH '后的新'").get()?.n).toBe(1);
     await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 1 篇');
     expect(db.prepare("SELECT count(*) AS n FROM note_fts WHERE note_fts MATCH '后的新'").get()?.n).toBe(1);
+    await page.getByLabel('搜索笔记',{exact:true}).fill('后的新');await page.getByRole('button',{name:'搜索',exact:true}).click();await expect(page.locator('#searchInfo')).toContainText('1 条结果');
   }finally{db.close();}
 });
 
@@ -176,4 +176,14 @@ test('真实桌面切换库后索引状态与数据相互隔离',async({desktopP
   await openVault(page,second);await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 2 篇');
   expect(await readdir(testInfo.outputPath('app-data','vaults'))).toHaveLength(2);
   await openVault(page,vault);await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 1 篇');
+});
+
+test('真实桌面外部文件变化自动进入搜索和文件列表',async({desktopPage:page,vault})=>{
+ await openVault(page,vault);await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 0 篇');
+ await writeFile(resolve(vault,'外部.md'),'外部创建可检索');
+ await expect(page.locator('#notes')).toContainText('外部.md');await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 1 篇');
+ await page.getByLabel('搜索笔记',{exact:true}).fill('外部创建');await page.getByRole('button',{name:'搜索',exact:true}).click();await expect(page.locator('#searchInfo')).toContainText('1 条结果');
+ await page.locator('#notes button').click();await page.locator('.cm-content').click();await page.keyboard.press('Control+End');await page.keyboard.insertText(' 本地未保存');
+ await writeFile(resolve(vault,'外部.md'),'外部第二次改写');
+ await expect(page.locator('#status')).toContainText('磁盘文件已变化');await expect(page.locator('.cm-content')).toContainText('本地未保存');await expect(page.locator('#dirty')).toHaveText('有未保存修改');
 });

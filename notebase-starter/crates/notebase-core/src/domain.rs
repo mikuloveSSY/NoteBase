@@ -29,6 +29,27 @@ pub const COMMANDS: &[&str] = &[
     "settings_set",
 ];
 pub const NOTE_SIZE_LIMIT: usize = 10 * 1024 * 1024;
+// 保留逻辑契约中的点号名称；Tauri 的传输名不允许点号。
+pub fn transport_event_name(logical: &str) -> String {
+    format!("notebase:{}", logical.replace('.', "_"))
+}
+#[cfg(test)]
+mod event_tests {
+    #[test]
+    fn transport_names_match_typescript_contract() {
+        for (logical, wire) in [
+            ("note.changed", "notebase:note_changed"),
+            ("note.conflict", "notebase:note_conflict"),
+            ("index.progress", "notebase:index_progress"),
+            ("index.state", "notebase:index_state"),
+            ("sync.state", "notebase:sync_state"),
+            ("conflict.detected", "notebase:conflict_detected"),
+            ("error.raised", "notebase:error_raised"),
+        ] {
+            assert_eq!(super::transport_event_name(logical), wire);
+        }
+    }
+}
 pub const PREVIEW_SIZE_LIMIT: usize = 256 * 1024;
 pub const MAX_PATH_UNITS: usize = 260;
 

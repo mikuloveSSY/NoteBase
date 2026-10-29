@@ -178,6 +178,66 @@ impl SqliteIndexStore {
     pub fn mark_offline(&self) -> Result<()> {
         set_meta(&*lock(&self.writer)?, "build_state", "offline")
     }
+    pub fn fingerprints(&self) -> Result<std::collections::BTreeMap<String, (String, u64, u64)>> {
+        self.read(|conn| {
+            let mut stmt =
+                conn.prepare("SELECT path,content_hash,mtime_ms,size_bytes FROM notes")?;
+            let rows = stmt.query_map([], |r| {
+                Ok((
+                    r.get(0)?,
+                    (
+                        r.get(1)?,
+                        r.get::<_, i64>(2)? as u64,
+                        r.get::<_, i64>(3)? as u64,
+                    ),
+                ))
+            })?;
+            rows.collect()
+        })
+    }
+    pub fn finish_increment(&self, full: bool) -> Result<()> {
+        let mut writer = lock(&self.writer)?;
+        let tx = db(writer.transaction())?;
+        let revision = meta(&tx, "index_revision")?
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(0)
+            .saturating_add(1);
+        set_meta(&tx, "index_revision", &revision.to_string())?;
+        set_meta(&tx, "build_state", "ready")?;
+        if full {
+            set_meta(&tx, "last_reconcile_ms", &now_ms().to_string())?;
+        }
+        if meta(&tx, "last_full_build_ms")?.is_none() {
+            set_meta(&tx, "last_full_build_ms", &now_ms().to_string())?;
+        }
+        db(tx.commit())
+    }
+    pub fn fingerprints_for(
+        &self,
+        paths: impl Iterator<Item = String>,
+    ) -> Result<std::collections::BTreeMap<String, (String, u64, u64)>> {
+        self.read(|conn| {
+            let tx = conn.unchecked_transaction()?;
+            let mut stmt =
+                tx.prepare("SELECT content_hash,mtime_ms,size_bytes FROM notes WHERE path=?1")?;
+            let mut values = std::collections::BTreeMap::new();
+            for path in paths {
+                if let Some(value) = stmt
+                    .query_row([&path], |r| {
+                        Ok((
+                            r.get(0)?,
+                            r.get::<_, i64>(1)? as u64,
+                            r.get::<_, i64>(2)? as u64,
+                        ))
+                    })
+                    .optional()?
+                {
+                    values.insert(path, value);
+                }
+            }
+            Ok(values)
+        })
+    }
 }
 
 fn validate_schema(connection: &Connection) -> Result<()> {
