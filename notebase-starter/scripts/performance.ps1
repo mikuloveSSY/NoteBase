@@ -1,5 +1,5 @@
 param(
- [Parameter(Mandatory=$true)][ValidateSet('generate','build','rebuild','query','watch','concurrent')][string]$Mode,
+ [Parameter(Mandatory=$true)][ValidateSet('generate','build','rebuild','query','watch','concurrent','accept')][string]$Mode,
  [Parameter(Mandatory=$true)][string]$OutputRoot,
  [ValidateSet(10000,100000,200000)][int]$Count=100000,
  [ValidateRange(1,10000)][int]$Repetitions=100

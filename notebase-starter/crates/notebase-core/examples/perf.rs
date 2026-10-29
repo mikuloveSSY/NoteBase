@@ -1,14 +1,17 @@
 //! 固定种子合成语料；只写指定的专用输出目录，不扫描真实笔记。
 use notebase_core::index::{
     worker::{BackgroundIndex, WorkerOptions},
-    IndexSession, IndexState,
+    IndexSession,
 };
 use serde_json::{json, Value};
 use std::{
     collections::BTreeSet,
     fs,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex,
+    },
     time::{Duration, Instant},
 };
 const ID: &str = "0123456789abcdef";
@@ -66,7 +69,12 @@ fn expected(query: &str, count: usize) -> BTreeSet<String> {
         .map(path)
         .collect()
 }
-fn wait_ready(worker: &BackgroundIndex, fatal: &Mutex<Option<Value>>) {
+fn wait_ready(
+    worker: &BackgroundIndex,
+    fatal: &Mutex<Option<Value>>,
+    ready: &AtomicUsize,
+    after: usize,
+) {
     let start = Instant::now();
     let mut last = Instant::now();
     loop {
@@ -75,7 +83,7 @@ fn wait_ready(worker: &BackgroundIndex, fatal: &Mutex<Option<Value>>) {
             "benchmark stopped after backend failure; see failure.json"
         );
         let status = worker.status();
-        if status.state == IndexState::Ready {
+        if ready.load(Ordering::Acquire) > after {
             break;
         }
         if last.elapsed() > Duration::from_secs(15) {
@@ -126,11 +134,124 @@ fn size(root: &Path) -> u64 {
         .map(|m| m.len())
         .sum()
 }
+fn run_queries(
+    worker: &BackgroundIndex,
+    root: &Path,
+    count: usize,
+    repetitions: usize,
+    startup_ms: u128,
+) {
+    let mut metrics = Vec::new();
+    for text in ["态规划", "图论算法", "跨词边界", "桥接", "规划", "算法"] {
+        let first = Instant::now();
+        query(worker, text, 50, None);
+        let first_ms = first.elapsed().as_secs_f64() * 1000.0;
+        verify(worker, text, &expected(text, count));
+        let mut times = Vec::new();
+        for _ in 0..repetitions {
+            let start = Instant::now();
+            query(worker, text, 50, None);
+            times.push(start.elapsed().as_secs_f64() * 1000.0);
+        }
+        let mut sorted = times.clone();
+        sorted.sort_by(f64::total_cmp);
+        let p95 = sorted[(sorted.len() * 95).div_ceil(100).saturating_sub(1)];
+        eprintln!("query {text}: p95 {p95:.3}ms");
+        metrics.push(json!({"query":text,"truthCount":expected(text,count).len(),"firstObservedMs":first_ms,"latencyMs":times,"p95Ms":p95,"fullSetVerified":true}));
+    }
+    for i in 0..100.min(count) {
+        let term = format!("植入标记词{i:04}终点");
+        verify(worker, &term, &BTreeSet::from([path(i)]));
+    }
+    let result = json!({"seed":SEED,"notes":count,"repetitions":repetitions,"startupMs":startup_ms,"queries":metrics,"markerWordsVerified":100.min(count),"cacheMode":"first observed before truth verification, then warm; OS cache not flushed"});
+    fs::write(
+        root.join("query.json"),
+        serde_json::to_vec_pretty(&result).unwrap(),
+    )
+    .unwrap();
+    println!("{result}");
+}
+fn run_watch(
+    worker: &BackgroundIndex,
+    root: &Path,
+    count: usize,
+    repetitions: usize,
+    fatal: &Mutex<Option<Value>>,
+) {
+    let vault = root.join("vault");
+    let mut times = Vec::new();
+    for n in 0..repetitions {
+        let name = vault.join("增量验收.md");
+        let term = format!("增量标记{n:06}");
+        let start = Instant::now();
+        fs::write(&name, &term).unwrap();
+        loop {
+            if let Ok(page) = worker.search(&json!({"query":term})) {
+                if page["totalApprox"] == 1 {
+                    break;
+                }
+            }
+            assert!(start.elapsed() < Duration::from_secs(10));
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        times.push(start.elapsed().as_secs_f64() * 1000.0);
+    }
+    let result = json!({"notes":count,"latencyMs":times});
+    fs::write(
+        root.join("watch.json"),
+        serde_json::to_vec_pretty(&result).unwrap(),
+    )
+    .unwrap();
+    println!("{result}");
+    fs::remove_file(vault.join("增量验收.md")).unwrap();
+
+    let removed = format!("增量标记{:06}", repetitions - 1);
+    let deadline = Instant::now();
+    loop {
+        assert!(fatal.lock().unwrap().is_none(), "watch backend failed");
+        if let Ok(page) = worker.search(&json!({"query":removed})) {
+            if page["totalApprox"] == 0
+                && worker.status().state == notebase_core::index::IndexState::Ready
+            {
+                break;
+            }
+        }
+        assert!(deadline.elapsed() < Duration::from_secs(10));
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    std::thread::sleep(Duration::from_millis(600));
+}
+fn run_concurrent(worker: &BackgroundIndex, root: &Path, count: usize, repetitions: usize) {
+    std::thread::scope(|scope| {
+        let jobs: Vec<_> = (0..4)
+            .map(|_| {
+                scope.spawn(|| {
+                    let mut times = Vec::new();
+                    for _ in 0..repetitions {
+                        let start = Instant::now();
+                        let page = query(worker, "跨词边界", 50, None);
+                        assert_eq!(page["totalApprox"], expected("跨词边界", count).len());
+                        times.push(start.elapsed().as_secs_f64() * 1000.0);
+                    }
+                    times
+                })
+            })
+            .collect();
+        let samples: Vec<_> = jobs.into_iter().map(|j| j.join().unwrap()).collect();
+        let result = json!({"notes":count,"clients":4,"repetitionsPerClient":repetitions,"latencyMs":samples});
+        fs::write(
+            root.join("concurrent.json"),
+            serde_json::to_vec_pretty(&result).unwrap(),
+        )
+        .unwrap();
+        println!("{result}");
+    });
+}
 fn main() {
     let args: Vec<_> = std::env::args().collect();
     assert!(
         args.len() >= 5,
-        "perf <generate|build|rebuild|query|watch|concurrent> <absolute-root> <count> <repetitions>"
+        "perf <generate|build|rebuild|query|watch|concurrent|accept> <absolute-root> <count> <repetitions>"
     );
     let mode = &args[1];
     assert!([
@@ -139,7 +260,8 @@ fn main() {
         "rebuild",
         "query",
         "watch",
-        "concurrent"
+        "concurrent",
+        "accept"
     ]
     .contains(&mode.as_str()));
     let root = PathBuf::from(&args[2]);
@@ -176,40 +298,49 @@ fn main() {
     assert_eq!(corpus["seed"], SEED);
     assert_eq!(corpus["notes"], count);
 
+    let existed = data.join("vaults").join(ID).join("index.db").exists();
     let started = Instant::now();
     let fatal = Arc::new(Mutex::new(None));
-    let fatal_sink = fatal.clone();
+    let sink_fatal = fatal.clone();
+    let ready = Arc::new(AtomicUsize::new(0));
+    let sink_ready = ready.clone();
+    let ready_times = Arc::new(Mutex::new(Vec::<u128>::new()));
+    let sink_times = ready_times.clone();
     let failure_path = root.join("failure.json");
-    let measuring_watch = mode == "watch";
+    let native_watch = mode == "watch" || mode == "accept";
     let events = Arc::new(move |name: &str, payload: Value| {
+        if name == "index.state" && payload["state"] == "ready" {
+            sink_times
+                .lock()
+                .unwrap()
+                .push(started.elapsed().as_millis());
+            sink_ready.fetch_add(1, Ordering::Release);
+        }
         if name == "error.raised" {
             eprintln!("{name}: {payload}");
-            if measuring_watch || !payload["detail"]["pollIntervalMs"].is_number() {
+            if native_watch || !payload["detail"]["pollIntervalMs"].is_number() {
                 let _ = fs::write(&failure_path, serde_json::to_vec_pretty(&payload).unwrap());
-                *fatal_sink.lock().unwrap() = Some(payload);
+                *sink_fatal.lock().unwrap() = Some(payload);
             }
         }
     });
-    let options = WorkerOptions {
-        native_watch: mode == "watch",
-        reconcile_interval: Duration::from_secs(86400),
-        ..WorkerOptions::default()
-    };
     let worker = BackgroundIndex::start_with_options(
         data.clone(),
         vault.to_string_lossy().into_owned(),
         ID.into(),
         events,
-        options,
+        WorkerOptions {
+            native_watch,
+            reconcile_interval: Duration::from_secs(86400),
+            ..WorkerOptions::default()
+        },
     );
-    wait_ready(&worker, &fatal);
-    let startup_ms = started.elapsed().as_millis();
+    wait_ready(&worker, &fatal, &ready, 0);
+    let first_ready_ms = ready_times.lock().unwrap()[0];
     if mode == "build" {
-        let result = json!({"notes":count,"startupBuildMs":startup_ms,"corpusBytes":size(&vault),"indexBytesLive":worker.status().index_bytes});
+        let mut result = json!({"notes":count,"startupBuildMs":first_ready_ms,"completion":"first index.state ready event","corpusBytes":size(&vault),"indexBytesLive":worker.status().index_bytes});
         worker.shutdown();
-        let settled = size(&data);
-        let mut result = result;
-        result["dataBytesAfterClose"] = json!(settled);
+        result["dataBytesAfterClose"] = json!(size(&data));
         fs::write(
             root.join("build.json"),
             serde_json::to_vec_pretty(&result).unwrap(),
@@ -218,16 +349,54 @@ fn main() {
         println!("{result}");
         return;
     }
-    // 首次启动对账可能改变游标；等待进度归稳后开始分页验证。
-    std::thread::sleep(Duration::from_secs(1));
-    wait_ready(&worker, &fatal);
-    if mode == "rebuild" {
-        let start = Instant::now();
+    // 已有库的首个 ready 是打开旧索引；第二个 ready 才是启动对账结束。
+    // 新库同样在发布后做一次启动对账。等待事件而非状态轮询，避免漏掉短暂的 ready。
+    if existed || !native_watch {
+        wait_ready(&worker, &fatal, &ready, 1);
+    }
+    let startup_ms = started.elapsed().as_millis();
+    if mode == "query" || mode == "accept" {
+        run_queries(&worker, &root, count, repetitions, startup_ms);
+    }
+    if mode == "watch" || mode == "accept" {
+        run_watch(&worker, &root, count, repetitions, &fatal);
+    }
+    if mode == "concurrent" || mode == "accept" {
+        run_concurrent(
+            &worker,
+            &root,
+            count,
+            if mode == "accept" {
+                repetitions.div_ceil(4)
+            } else {
+                repetitions
+            },
+        );
+    }
+    let mut rebuilt = None;
+    if mode == "rebuild" || (mode == "accept" && count == 100000) {
+        let after = ready.load(Ordering::Acquire);
+        let began = started.elapsed().as_millis();
         let job = worker.rebuild().unwrap();
-        wait_ready(&worker, &fatal);
-        let result = json!({"notes":count,"jobId":job,"rebuildMs":start.elapsed().as_millis(),"indexBytesLive":worker.status().index_bytes,"corpusBytes":size(&vault)});
-        worker.shutdown();
-        let mut result = result;
+        wait_ready(&worker, &fatal, &ready, after);
+        let elapsed = ready_times.lock().unwrap()[after] - began;
+        for text in ["态规划", "图论算法", "跨词边界", "桥接", "规划", "算法"] {
+            verify(&worker, text, &expected(text, count));
+        }
+        for i in 0..100.min(count) {
+            verify(
+                &worker,
+                &format!("植入标记词{i:04}终点"),
+                &BTreeSet::from([path(i)]),
+            );
+        }
+        rebuilt = Some(
+            json!({"notes":count,"jobId":job,"rebuildMs":elapsed,"truthAfterRebuildVerified":true,"completion":"index.state ready after requested job","indexBytesLive":worker.status().index_bytes,"corpusBytes":size(&vault)}),
+        );
+    }
+    let live_bytes = worker.status().index_bytes;
+    worker.shutdown();
+    if let Some(mut result) = rebuilt {
         result["dataBytesAfterClose"] = json!(size(&data));
         fs::write(
             root.join("rebuild.json"),
@@ -235,94 +404,14 @@ fn main() {
         )
         .unwrap();
         println!("{result}");
-        return;
     }
-    if mode == "concurrent" {
-        std::thread::scope(|scope| {
-            let jobs: Vec<_> = (0..4)
-                .map(|_| {
-                    scope.spawn(|| {
-                        let mut times = Vec::new();
-                        for _ in 0..repetitions {
-                            let start = Instant::now();
-                            let page = query(&worker, "跨词边界", 50, None);
-                            assert_eq!(page["totalApprox"], expected("跨词边界", count).len());
-                            times.push(start.elapsed().as_secs_f64() * 1000.0);
-                        }
-                        times
-                    })
-                })
-                .collect();
-            let samples: Vec<_> = jobs.into_iter().map(|j| j.join().unwrap()).collect();
-            let result = json!({"notes":count,"clients":4,"repetitionsPerClient":repetitions,"latencyMs":samples});
-            fs::write(
-                root.join("concurrent.json"),
-                serde_json::to_vec_pretty(&result).unwrap(),
-            )
-            .unwrap();
-            println!("{result}");
-        });
-        worker.shutdown();
-        return;
-    }
-    if mode == "watch" {
-        let mut times = Vec::new();
-        for n in 0..repetitions {
-            let name = vault.join("增量验收.md");
-            let term = format!("增量标记{n:06}");
-            let start = Instant::now();
-            fs::write(&name, &term).unwrap();
-            loop {
-                if let Ok(page) = worker.search(&json!({"query":term})) {
-                    if page["totalApprox"] == 1 {
-                        break;
-                    }
-                }
-                assert!(start.elapsed() < Duration::from_secs(10));
-                std::thread::sleep(Duration::from_millis(5));
-            }
-            times.push(start.elapsed().as_secs_f64() * 1000.0);
-        }
-        let result = json!({"notes":count,"latencyMs":times});
+    if mode == "accept" {
+        let result = json!({"notes":count,"openedExistingIndex":existed,"firstReadyMs":first_ready_ms,"startupSettledMs":startup_ms,"indexBytesLive":live_bytes,"dataBytesAfterClose":size(&data),"corpusBytes":size(&vault)});
         fs::write(
-            root.join("watch.json"),
+            root.join("accept.json"),
             serde_json::to_vec_pretty(&result).unwrap(),
         )
         .unwrap();
         println!("{result}");
-        fs::remove_file(vault.join("增量验收.md")).unwrap();
-        worker.shutdown();
-        return;
     }
-    assert_eq!(mode, "query");
-    let mut metrics = Vec::new();
-    for text in ["态规划", "图论算法", "跨词边界", "桥接", "规划", "算法"] {
-        let first = Instant::now();
-        query(&worker, text, 50, None);
-        let first_ms = first.elapsed().as_secs_f64() * 1000.0;
-        verify(&worker, text, &expected(text, count));
-        let mut times = Vec::new();
-        for _ in 0..repetitions {
-            let start = Instant::now();
-            query(&worker, text, 50, None);
-            times.push(start.elapsed().as_secs_f64() * 1000.0);
-        }
-        let mut sorted = times.clone();
-        sorted.sort_by(f64::total_cmp);
-        let p95 = sorted[(sorted.len() * 95).div_ceil(100).saturating_sub(1)];
-        eprintln!("query {text}: p95 {p95:.3}ms");
-        metrics.push(json!({"query":text,"truthCount":expected(text,count).len(),"firstObservedMs":first_ms,"latencyMs":times,"p95Ms":p95,"fullSetVerified":true}));
-    }
-    for i in 0..100.min(count) {
-        let term = format!("植入标记词{i:04}终点");
-        verify(&worker, &term, &BTreeSet::from([path(i)]));
-    }
-    let result = json!({"seed":SEED,"notes":count,"repetitions":repetitions,"startupMs":startup_ms,"queries":metrics,"markerWordsVerified":100.min(count),"cacheMode":"first observed before truth verification, then warm; OS cache not flushed"});
-    fs::write(
-        root.join("query.json"),
-        serde_json::to_vec_pretty(&result).unwrap(),
-    )
-    .unwrap();
-    println!("{result}");
-    worker.shutdown();
 }
