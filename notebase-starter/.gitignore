@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-delivery/
 target/
 src-tauri/target/
 crates/*/target/

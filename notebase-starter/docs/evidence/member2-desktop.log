@@ -1,0 +1,23 @@
+
+> notebase-starter@0.3.0 test:desktop
+> playwright test --config playwright.desktop.config.ts
+
+
+Running 9 tests using 1 worker
+
+  ok 1 tests\desktop\storage.spec.ts:78:1 › 真实桌面读取 BOM 文件 保存并重新打开 (1.5s)
+  ok 2 tests\desktop\storage.spec.ts:96:1 › 真实桌面新建保留名 自动修正且不覆盖同名文件 (1.2s)
+  ok 3 tests\desktop\storage.spec.ts:107:1 › 真实桌面非法编码与超大文件只读预览 (22.9s)
+  ok 4 tests\desktop\storage.spec.ts:125:1 › 真实桌面拒绝覆盖外部修改 (1.2s)
+  ok 5 tests\desktop\storage.spec.ts:140:1 › 真实桌面在库外构建索引 保存后提示刷新且重开能更新索引 (4.0s)
+  ok 6 tests\desktop\storage.spec.ts:165:1 › 真实桌面切换库后索引状态与数据相互隔离 (5.0s)
+  ok 7 tests\desktop\storage.spec.ts:181:1 › 成员二真实桌面自动保存 属性与回收站恢复 (4.6s)
+  ok 8 tests\desktop\storage.spec.ts:191:1 › 成员二真实IPC持久草稿刷新恢复 双链重命名和图数据 (1.5s)
+  ok 9 tests\desktop\storage.spec.ts:202:1 › 成员二真实窗口关闭会先冲刷未保存内容 (1.0s)
+
+  9 passed (43.6s)
+[stderr]
+(node:24516) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:24516) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
