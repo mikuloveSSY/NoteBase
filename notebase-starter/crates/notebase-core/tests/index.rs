@@ -349,6 +349,12 @@ fn partial_or_unwritable_index_never_claims_ready_and_cache_cannot_be_in_vault()
         Arc::new(|_, _| {}),
     );
     assert_eq!(wait_finished(&index).state, IndexState::Offline);
+    // 候选含非法文件时不发布；后续增量对账可提交其余合法记录，但仍明确 offline。
+    let start = Instant::now();
+    while index.status().note_count != 1 {
+        assert!(start.elapsed() < Duration::from_secs(5));
+        std::thread::sleep(Duration::from_millis(10));
+    }
     assert_eq!(index.status().note_count, 1);
     index.shutdown();
     let index = BackgroundIndex::start(

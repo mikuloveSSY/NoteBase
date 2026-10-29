@@ -15,6 +15,7 @@ pub struct App {
     factory: StoreFactory,
     index_factory: Option<IndexFactory>,
     index: Option<Box<dyn IndexSession>>,
+    location: Option<Box<dyn crate::migration::VaultLocation>>,
 }
 fn hash(bytes: &[u8]) -> String {
     format!("sha256:{:x}", Sha256::digest(bytes))
@@ -34,10 +35,15 @@ impl App {
             factory,
             index_factory: None,
             index: None,
+            location: None,
         }
     }
     pub fn with_index(mut self, factory: IndexFactory) -> Self {
         self.index_factory = Some(factory);
+        self
+    }
+    pub fn with_location(mut self, location: Box<dyn crate::migration::VaultLocation>) -> Self {
+        self.location = Some(location);
         self
     }
     pub fn dispatch(&mut self, r: Request) -> Response {
@@ -61,6 +67,57 @@ impl App {
     }
     fn handle(&mut self, command: &str, p: &Value) -> Result<Value> {
         match command {
+            "settings_get" => {
+                if let Some(keys) = p.get("keys") {
+                    if keys
+                        .as_array()
+                        .is_none_or(|keys| keys.iter().any(|k| k.as_str() != Some("vaultPath")))
+                    {
+                        return Err(AppError::new("E_PATH_INVALID", "当前只支持 vaultPath 设置"));
+                    }
+                }
+                let path = if let Some(store) = &self.store {
+                    Some(store.vault_path())
+                } else {
+                    self.location
+                        .as_ref()
+                        .map(|l| l.configured_path())
+                        .transpose()?
+                        .flatten()
+                };
+                Ok(json!({"values":{"vaultPath":path}}))
+            }
+            "settings_set" => {
+                let values = p
+                    .get("values")
+                    .and_then(Value::as_object)
+                    .ok_or_else(|| AppError::new("E_PATH_INVALID", "values 必须是对象"))?;
+                if values.len() != 1 || !values.contains_key("vaultPath") {
+                    return Err(AppError::new(
+                        "E_PATH_INVALID",
+                        "当前只实现 vaultPath 迁移，其他设置尚未实现",
+                    ));
+                }
+                let target = field(&p["values"], "vaultPath")?;
+                let source = self.store()?.vault_path();
+                let location = self
+                    .location
+                    .as_ref()
+                    .ok_or_else(|| AppError::new("E_INTERNAL", "未配置库迁移适配器"))?;
+                let copied = location.copy_verified(&source, target)?;
+                let store = (self.factory)(&copied)?;
+                store.list(&RelPath::root())?;
+                location.save_path(&copied)?;
+                self.index = None;
+                let id = hash(store.vault_path().as_bytes())[7..23].to_owned();
+                self.index = self
+                    .index_factory
+                    .as_ref()
+                    .map(|factory| factory(&store.vault_path(), &id));
+                self.store = Some(store);
+                self.known.clear();
+                Ok(json!({"ok":true}))
+            }
             "vault_open" => {
                 let store = (self.factory)(field(p, "path")?)?;
                 let count = store.list(&RelPath::root())?.len();
@@ -98,6 +155,18 @@ impl App {
                     .as_ref()
                     .ok_or_else(|| crate::index::unavailable("未配置索引"))?
                     .search(p)
+            }
+            "index_rebuild" => {
+                self.store()?;
+                if p.get("mode").and_then(Value::as_str) != Some("full") {
+                    return Err(AppError::new("E_QUERY_UNSUPPORTED", "仅支持 mode=full"));
+                }
+                let id = self
+                    .index
+                    .as_ref()
+                    .ok_or_else(|| crate::index::unavailable("未配置索引"))?
+                    .rebuild()?;
+                Ok(json!({"jobId":id}))
             }
             "note_list" => {
                 let prefix = p.get("dirPrefix").and_then(Value::as_str).unwrap_or("");

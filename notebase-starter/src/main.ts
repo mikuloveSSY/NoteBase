@@ -10,6 +10,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML=`
 <aside><div class="brand"><b>N</b><div>NoteBase<small>本地优先 · Markdown</small></div></div>
 <label class="field">笔记库目录<input id="vaultPath" placeholder="例如 D:\\Notes" aria-label="笔记库绝对路径"></label>
 <button id="open">打开已有文件夹</button><div class="section-title">笔记 <button id="new" aria-label="新建笔记">＋ 新建</button></div>
+<button id="rebuild">后台重建索引</button><button id="migrate">迁移笔记库目录</button><p id="indexWarning" class="muted" role="status" hidden></p>
 <label class="field">搜索笔记<input id="searchQuery" aria-label="搜索笔记" placeholder='关键词、title:标题、tag:标签'></label><button id="searchButton">搜索</button><div id="searchInfo" role="status"></div><nav id="searchResults" aria-label="搜索结果"></nav><button id="searchMore" hidden>更多搜索结果</button>
 <nav id="notes" aria-label="笔记列表"></nav><button id="more" hidden>加载更多笔记</button><button id="refresh">刷新文件列表</button><div class="sidebar-foot">文件是唯一数据源<br>主干版本 ${version}</div></aside>
 <main><header><div><span class="eyebrow">工作空间</span><h1 id="title">选择或新建一篇笔记</h1><div id="path" class="muted">从左侧打开已有的 Markdown 文件夹</div></div><div class="actions"><span id="dirty">未打开</span><button id="save" class="primary" disabled>保存 Ctrl+S</button></div></header>
@@ -28,6 +29,8 @@ function update(){
  $<HTMLButtonElement>('more').disabled=!opened||busy;
  $<HTMLButtonElement>('refresh').disabled=!opened||busy;
  $<HTMLButtonElement>('open').disabled=busy;
+ $<HTMLButtonElement>('rebuild').disabled=!opened||busy||!desktopMode;
+ $<HTMLButtonElement>('migrate').disabled=!opened||busy||!desktopMode;
  $<HTMLInputElement>('vaultPath').disabled=busy||!desktopMode;
  $('count').textContent=`${view.state.doc.length} 字符`;
  const canEdit=!!active&&!active.readOnly&&!busy;
@@ -79,6 +82,7 @@ void pollIndex();
 let externalTreeDirty=false;
 if(desktopMode){void import('@tauri-apps/api/event').then(async({listen})=>{
  await listen<{path:string;source:string;contentHash:string}>(transportEventName('note.changed'),event=>{externalTreeDirty=true;if(active?.path===event.payload.path)status('磁盘文件已变化；当前编辑内容保留，请重新打开并确认。');});
+ await listen<{code:string;message:string;detail:{recoveryDir?:string}}>(transportEventName('error.raised'),event=>{if(event.payload.code==='E_INDEX_UNAVAILABLE'){$('indexWarning').hidden=false;$('indexWarning').textContent=event.payload.message+(event.payload.detail.recoveryDir?' · 原件归档：'+event.payload.detail.recoveryDir:'');}});
 });}
 let searchCursor:string|null=null,searchText='';
 async function searchNotes(more=false){await run(async()=>{
@@ -91,3 +95,10 @@ async function searchNotes(more=false){await run(async()=>{
 });}
 $('searchButton').addEventListener('click',()=>void searchNotes());$('searchMore').addEventListener('click',()=>void searchNotes(true));
 $('searchQuery').addEventListener('keydown',event=>{if(event.key==='Enter')void searchNotes();});
+$('rebuild').addEventListener('click',()=>void run(async()=>{const result=await call<{jobId:string}>('index_rebuild',{mode:'full'});status('已启动后台重建：'+result.jobId);}));
+$('migrate').addEventListener('click',()=>{if(busy||!discard())return;const target=prompt('迁移到新的绝对目录（目标必须不存在）。校验后切换，原目录会完整保留。');if(target===null)return;void run(async()=>{
+ await call('settings_set',{values:{vaultPath:target}});
+ const settings=await call<{values:{vaultPath:string}}>('settings_get',{keys:['vaultPath']});$<HTMLInputElement>('vaultPath').value=settings.values.vaultPath;
+ active=null;dirty=false;loading=true;view.dispatch({changes:{from:0,to:view.state.doc.length,insert:''}});loading=false;$('title').textContent='选择或新建一篇笔记';$('path').textContent='Markdown 文件库';$('readNotice').hidden=true;$('searchResults').replaceChildren();$('searchInfo').textContent='';$('searchMore').hidden=true;await list();status('迁移完成，已切换到新目录；原目录完整保留。');
+});});
+if(desktopMode){void call<{values:{vaultPath:string|null}}>('settings_get',{keys:['vaultPath']}).then(result=>{if(!opened&&!$<HTMLInputElement>('vaultPath').value&&result.values.vaultPath)$<HTMLInputElement>('vaultPath').value=result.values.vaultPath;}).catch(()=>{});}

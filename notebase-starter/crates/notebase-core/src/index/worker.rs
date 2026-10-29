@@ -43,6 +43,9 @@ struct State {
     active: bool,
 }
 pub struct BackgroundIndex {
+    full_rebuild: Arc<AtomicBool>,
+    rebuild_pending: Arc<Mutex<Option<String>>>,
+    vault: String,
     queue: Arc<super::queue::IndexQueue>,
     db_path: PathBuf,
     state: Arc<Mutex<State>>,
@@ -117,6 +120,11 @@ impl BackgroundIndex {
         events: EventSink,
         options: WorkerOptions,
     ) -> Self {
+        let vault_path = vault.clone();
+        let full_rebuild = Arc::new(AtomicBool::new(true));
+        let full_rebuild_worker = full_rebuild.clone();
+        let rebuild_pending = Arc::new(Mutex::new(None));
+        let rebuild_requests = rebuild_pending.clone();
         let db_path = data_root.join("vaults").join(&vault_id).join("index.db");
         let state = Arc::new(Mutex::new(State {
             status: IndexStatus {
@@ -140,11 +148,11 @@ impl BackgroundIndex {
                 let result = (|| -> Result<()> {
                     let path = cache_path(&data_root, Path::new(&vault), &vault_id)?;
                     let start = Instant::now();
-                    let index = loop {
+                    let recovered = loop {
                         if cancel2.load(Ordering::Acquire) {
                             return Ok(());
                         }
-                        match SqliteIndexStore::open(&path, &vault_id) {
+                        match super::recovery::open(&path, &vault_id) {
                             Ok(index) => break index,
                             Err(error)
                                 if error.retryable && start.elapsed() < Duration::from_secs(5) =>
@@ -154,6 +162,8 @@ impl BackgroundIndex {
                             Err(error) => return Err(error),
                         }
                     };
+                    if let Some(archive)=&recovered.archived{if state2.lock().unwrap().active{events2("error.raised",json!({"code":"E_INDEX_UNAVAILABLE","message":"原索引已归档并重新构建；请核对历史业务状态","detail":{"recoveryDir":archive,"businessRestored":recovered.business_restored}}));}}
+                    let index=recovered.store;
                     let store = FsStore::open(&vault)?;
                     let watcher_failed=Arc::new(AtomicBool::new(false));
                     let mut watcher=if options.native_watch{
@@ -161,12 +171,21 @@ impl BackgroundIndex {
                             Ok(watcher)=>Some(watcher),Err(error)=>{work_queue.reconcile(Some(format!("原生监听不可用，已启用周期对账：{error}")));None}
                         }
                     }else{work_queue.reconcile(Some("原生监听已禁用，使用周期对账".into()));None};
-                    if let Err(error)=build(&index,&store,&state2,&cancel2,&events2){let _=index.mark_offline();report_error(&state2,&events2,error);}
+                    if index.needs_rebuild{
+                        if let Err(error)=staged_build(&index,&path,&vault_id,&store,&state2,&cancel2,&events2){report_error(&state2,&events2,error);}
+                    }else{let mut state=state2.lock().unwrap();state.status=index.status()?;emit_state(&state,&events2);}
+                    full_rebuild_worker.store(false,Ordering::Release);
                     work_queue.reconcile(None);
                     let mut invalid=std::collections::BTreeSet::new();let mut last_reconcile=Instant::now();
                     loop {
                         if cancel2.load(Ordering::Acquire) {
                             return Ok(());
+                        }
+                        let request=rebuild_requests.lock().unwrap().take();
+                        if request.is_some(){
+                            if let Err(error)=staged_build(&index,&path,&vault_id,&store,&state2,&cancel2,&events2){report_error(&state2,&events2,error);}
+                            full_rebuild_worker.store(false,Ordering::Release);
+                            work_queue.reconcile(None);
                         }
                         if watcher_failed.swap(false,Ordering::AcqRel){watcher=None;}
                         if last_reconcile.elapsed()>=options.reconcile_interval{work_queue.reconcile(None);last_reconcile=Instant::now();}
@@ -214,6 +233,9 @@ impl BackgroundIndex {
             }
         };
         Self {
+            full_rebuild,
+            rebuild_pending,
+            vault: vault_path,
             queue,
             db_path,
             state,
@@ -245,6 +267,45 @@ impl Drop for BackgroundIndex {
     }
 }
 impl IndexSession for BackgroundIndex {
+    fn rebuild(&self) -> Result<String> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| unavailable("索引状态锁异常"))?;
+        if !state.active
+            || self
+                .worker
+                .as_ref()
+                .is_none_or(|worker| worker.is_finished())
+        {
+            return Err(unavailable("索引线程不可用，请重新打开库"));
+        }
+        if state.status.state == IndexState::Rebuilding
+            || self.full_rebuild.swap(true, Ordering::AcqRel)
+        {
+            let mut error = unavailable("已有索引任务正在执行，请稍后重试");
+            error.retryable = true;
+            return Err(error);
+        }
+        static JOB: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let id = format!(
+            "rebuild-{}-{}-{}",
+            std::process::id(),
+            super::now_ms(),
+            JOB.fetch_add(1, Ordering::Relaxed)
+        );
+        *self.rebuild_pending.lock().unwrap() = Some(id.clone());
+        state.status.state = IndexState::Rebuilding;
+        state.generation += 1;
+        emit_state(&state, &self.events);
+        if matches!(
+            self.refresh.try_send(()),
+            Err(mpsc::TrySendError::Disconnected(()))
+        ) {
+            return Err(unavailable("索引线程已停止"));
+        }
+        Ok(id)
+    }
     fn enqueue(&self, path: &RelPath) -> bool {
         let mut state = match self.state.lock() {
             Ok(state) => state,
@@ -278,26 +339,53 @@ impl IndexSession for BackgroundIndex {
                 .state
                 .lock()
                 .map_err(|_| unavailable("索引状态锁异常"))?;
-            if state.status.state != IndexState::Ready {
+            if state.status.state != IndexState::Ready
+                && state.status.state != IndexState::Rebuilding
+            {
                 return Err(unavailable("索引未就绪或已过期，请重新打开库"));
             }
             state.generation
         };
-        let result = super::search::search_path(&self.db_path, query)?;
+        let rebuilding = self.status().state == IndexState::Rebuilding;
+        let mut result = match super::search::search_path(&self.db_path, query) {
+            Ok(result) => result,
+            Err(error) if rebuilding && error.code == "E_INDEX_UNAVAILABLE" => {
+                scan_search(&self.db_path, &self.vault, query)?
+            }
+            Err(error) => return Err(error),
+        };
+        if rebuilding {
+            result["degraded"] = json!(true);
+            if result["degradeReason"] != "index_rebuilding_partial" {
+                result["degradeReason"] = json!("index_rebuilding");
+            }
+        }
         let state = self
             .state
             .lock()
             .map_err(|_| unavailable("索引状态锁异常"))?;
-        if state.generation != generation || state.status.state != IndexState::Ready {
+        if state.generation != generation
+            || !matches!(
+                state.status.state,
+                IndexState::Ready | IndexState::Rebuilding
+            )
+        {
             return Err(unavailable("查询期间索引已变化，请重试"));
         }
         Ok(result)
     }
     fn status(&self) -> IndexStatus {
-        self.state
+        let mut status = self
+            .state
             .lock()
             .map(|s| s.status.clone())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        if self.full_rebuild.load(Ordering::Acquire)
+            && self.worker.as_ref().is_some_and(|w| !w.is_finished())
+        {
+            status.state = IndexState::Rebuilding;
+        }
+        status
     }
     fn invalidate(&self) {
         if let Ok(mut state) = self.state.lock() {
@@ -478,10 +566,142 @@ fn build(
     Ok(())
 }
 
+fn staged_build(
+    index: &SqliteIndexStore,
+    path: &Path,
+    id: &str,
+    store: &dyn NoteStore,
+    state: &Arc<Mutex<State>>,
+    cancelled: &AtomicBool,
+    events: &EventSink,
+) -> Result<()> {
+    let folder = tempfile::Builder::new()
+        .prefix("rebuild-")
+        .tempdir_in(path.parent().unwrap())
+        .map_err(AppError::io)?;
+    let candidate_path = folder.path().join("index.db");
+    let candidate = SqliteIndexStore::open(&candidate_path, id)?;
+    let private = Mutex::new(State {
+        status: IndexStatus::default(),
+        generation: 0,
+        active: true,
+    });
+    let real = state.clone();
+    let forward = events.clone();
+    let stage_events: EventSink = Arc::new(move |name, payload| {
+        let mut state = real.lock().unwrap();
+        if !state.active {
+            return;
+        }
+        if name == "index.progress" {
+            state.status.state = IndexState::Rebuilding;
+            if let Ok(progress) = serde_json::from_value::<IndexProgress>(payload.clone()) {
+                state.status.progress = Some(progress);
+            }
+            forward(name, payload);
+        }
+    });
+    build(&candidate, store, &private, cancelled, &stage_events)?;
+    // 扫描期间的保存先留在主队列；发布前再从权威文件校验候选。
+    for _ in 0..3 {
+        if cancelled.load(Ordering::Acquire) {
+            return Err(AppError::new("E_CANCELLED", "重建已取消"));
+        }
+        let generation = state.lock().unwrap().generation;
+        let mut invalid = std::collections::BTreeSet::new();
+        super::incremental::apply(
+            &candidate,
+            store,
+            super::queue::Work {
+                paths: Default::default(),
+                reconcile: true,
+                warning: None,
+            },
+            &mut invalid,
+            cancelled,
+        )?;
+        if !invalid.is_empty() {
+            return Err(unavailable("存在无法索引的文件，旧索引保留，重建未发布"));
+        }
+        if state.lock().unwrap().generation != generation {
+            continue;
+        }
+        index.publish_from(&candidate_path)?;
+        let mut state = state.lock().unwrap();
+        if !state.active || cancelled.load(Ordering::Acquire) {
+            return Err(AppError::new("E_CANCELLED", "重建已取消"));
+        }
+        if state.generation != generation {
+            index.mark_offline()?;
+        }
+        state.status = index.status()?;
+        emit_state(&state, events);
+        return Ok(());
+    }
+    Err(unavailable(
+        "重建期间持续写入，候选未发布；后台增量会继续追平",
+    ))
+}
+fn scan_search(path: &Path, vault: &str, query: &Value) -> Result<Value> {
+    let dir = tempfile::Builder::new()
+        .prefix("scan-")
+        .tempdir_in(path.parent().unwrap())
+        .map_err(AppError::io)?;
+    let store = FsStore::open(vault)?;
+    let index = SqliteIndexStore::open(&dir.path().join("index.db"), "0000000000000000")?;
+    let mut invalid = std::collections::BTreeSet::new();
+    super::incremental::apply(
+        &index,
+        &store,
+        super::queue::Work {
+            paths: Default::default(),
+            reconcile: true,
+            warning: None,
+        },
+        &mut invalid,
+        &AtomicBool::new(false),
+    )?;
+    index.finish_build()?;
+    index.stable_scan_epoch()?;
+    let mut result = index.search(query)?;
+    result["degraded"] = json!(true);
+    result["degradeReason"] = json!(if invalid.is_empty() {
+        "index_rebuilding"
+    } else {
+        "index_rebuilding_partial"
+    });
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::domain::{Entry, FileStat, StoreResult, StoredNote, WriteOutcome};
+    #[test]
+    fn missing_index_scan_fallback_has_stable_paging() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = dir.path().join("vault");
+        fs::create_dir(&vault).unwrap();
+        for name in ["A.md", "B.md"] {
+            fs::write(vault.join(name), "扫描查询标记").unwrap();
+        }
+        let path = dir.path().join("index.db");
+        let first = scan_search(
+            &path,
+            vault.to_str().unwrap(),
+            &json!({"query":"扫描查询","limit":1}),
+        )
+        .unwrap();
+        assert_eq!(first["degraded"], true);
+        let second = scan_search(
+            &path,
+            vault.to_str().unwrap(),
+            &json!({"query":"扫描查询","limit":1,"cursor":first["nextCursor"]}),
+        )
+        .unwrap();
+        assert_eq!(second["items"].as_array().unwrap().len(), 1);
+        assert_ne!(first["items"][0]["path"], second["items"][0]["path"]);
+    }
     struct InterleavedStore {
         inner: FsStore,
         on_read: Box<dyn Fn() + Send>,

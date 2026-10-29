@@ -2,13 +2,14 @@
 pub mod extract;
 pub mod incremental;
 pub mod queue;
+pub mod recovery;
 pub mod search;
 pub mod sqlite;
 pub mod watcher;
 pub mod worker;
 
 use crate::domain::{AppError, RelPath, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const SCHEMA_VERSION: &str = "1";
@@ -39,7 +40,7 @@ pub enum IndexState {
     Unavailable,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexProgress {
     pub phase: String,
@@ -80,6 +81,7 @@ pub trait IndexStore {
 
 // 应用层仅依赖会话端口；后台任务不借用 App 的全局锁。
 pub trait IndexSession: Send {
+    fn rebuild(&self) -> Result<String>;
     fn enqueue(&self, path: &RelPath) -> bool;
     fn search(&self, query: &serde_json::Value) -> Result<serde_json::Value>;
     fn status(&self) -> IndexStatus;

@@ -87,6 +87,9 @@ impl SqliteIndexStore {
             error.retryable = true;
             error
         })?;
+        Self::open_locked(path, vault_id, &writer_lease)
+    }
+    pub(super) fn open_locked(path: &Path, vault_id: &str, writer_lease: &File) -> Result<Self> {
         let mut writer = db(Connection::open_with_flags(
             path,
             OpenFlags::SQLITE_OPEN_READ_WRITE
@@ -123,7 +126,9 @@ impl SqliteIndexStore {
         }
         let integrity: String = db(writer.query_row("PRAGMA quick_check", [], |row| row.get(0)))?;
         if integrity != "ok" {
-            return Err(unavailable("索引校验失败，原数据库已保留"));
+            let mut error = unavailable("索引校验失败，原数据库已保留");
+            error.detail = serde_json::json!({"reason":"integrity_failed"});
+            return Err(error);
         }
         let needs_rebuild = meta(&writer, "schema_version")?.as_deref() != Some(SCHEMA_VERSION)
             || meta(&writer, "tokenizer_version")?.as_deref() != Some(TOKENIZER_VERSION)
@@ -143,7 +148,9 @@ impl SqliteIndexStore {
             writer: Mutex::new(writer),
             next_reader: AtomicUsize::new(0),
             path: path.into(),
-            _writer_lease: writer_lease,
+            _writer_lease: writer_lease
+                .try_clone()
+                .map_err(crate::domain::AppError::io)?,
             needs_rebuild,
         })
     }
@@ -238,9 +245,49 @@ impl SqliteIndexStore {
             Ok(values)
         })
     }
+    /// 旁路构建完成后仅替换派生表；四张业务状态表保持原样。
+    pub fn publish_from(&self, staging: &Path) -> Result<()> {
+        let mut writer = lock(&self.writer)?;
+        db(writer.execute(
+            "ATTACH DATABASE ?1 AS candidate",
+            [staging.to_string_lossy().as_ref()],
+        ))?;
+        let result = (|| {
+            let tx = db(writer.transaction())?;
+            db(tx.execute_batch("DELETE FROM links; DELETE FROM aliases; DELETE FROM tags; DELETE FROM note_fts; DELETE FROM notes;
+                INSERT INTO notes(rowid,path,title,size_bytes,mtime_ms,content_hash,created_ms,updated_ms,has_attachment,indexed_at_ms) SELECT rowid,path,title,size_bytes,mtime_ms,content_hash,created_ms,updated_ms,has_attachment,indexed_at_ms FROM candidate.notes;
+                INSERT INTO note_fts(rowid,path,title,body) SELECT rowid,path,title,body FROM candidate.note_fts;
+                INSERT INTO aliases SELECT * FROM candidate.aliases; INSERT INTO tags SELECT * FROM candidate.tags;"))?;
+            set_meta(&tx, "schema_version", super::SCHEMA_VERSION)?;
+            set_meta(&tx, "tokenizer_version", super::TOKENIZER_VERSION)?;
+            set_meta(&tx, "build_state", "ready")?;
+            set_meta(&tx, "last_full_build_ms", &now_ms().to_string())?;
+            let revision = meta(&tx, "index_revision")?
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(0)
+                .saturating_add(1);
+            set_meta(&tx, "index_revision", &revision.to_string())?;
+            db(tx.commit())
+        })();
+        let detach = db(writer.execute_batch("DETACH DATABASE candidate"));
+        result.and(detach)
+    }
+    pub(crate) fn stable_scan_epoch(&self) -> Result<()> {
+        use sha2::{Digest, Sha256};
+        let fingerprint = format!(
+            "{:x}",
+            Sha256::digest(
+                serde_json::to_vec(&self.fingerprints()?)
+                    .map_err(|e| unavailable(e.to_string()))?
+            )
+        );
+        let writer = lock(&self.writer)?;
+        set_meta(&writer, "last_full_build_ms", "0")?;
+        set_meta(&writer, "index_revision", &fingerprint)
+    }
 }
 
-fn validate_schema(connection: &Connection) -> Result<()> {
+pub(super) fn validate_schema(connection: &Connection) -> Result<()> {
     let expected = db(Connection::open_in_memory())?;
     db(expected.execute_batch(SCHEMA))?;
     let catalog = |conn: &Connection| -> Result<Vec<(String, String)>> {

@@ -12,4 +12,6 @@ export interface NoteContent {path:string;title:string;body:string;frontmatter:R
 export interface SaveResult {path:string;contentHash:string;mtimeMs:number;bytesWritten:number;snapshotCreated:boolean;indexQueued:boolean;warnings:string[]}
 export interface SearchQuery {query:string;filters?:{tags?:string[];pathPrefix?:string;mtimeFromMs?:number|null;mtimeToMs?:number|null;createdFromMs?:number|null;createdToMs?:number|null;hasAttachment?:boolean|null};sort?:'relevance'|'mtime';limit?:number;cursor?:string|null}
 export interface SearchPage {items:{path:string;title:string;snippet:string;score:number;matchedIn:string;mtimeMs:number}[];nextCursor:string|null;totalApprox:number;tookMs:number;degraded:boolean;degradeReason:string|null}
+export interface IndexRebuildResult {jobId:string}
+export interface VaultSettings {vaultPath:string|null}
 export interface IndexStatus {state:'ready'|'rebuilding'|'offline'|'unavailable';noteCount:number;indexBytes:number;lastFullBuildMs:number|null;progress:{phase:'scan'|'write'|'optimize';done:number;total:number;elapsedMs:number}|null}

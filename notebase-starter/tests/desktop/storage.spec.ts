@@ -187,3 +187,26 @@ test('真实桌面外部文件变化自动进入搜索和文件列表',async({de
  await writeFile(resolve(vault,'外部.md'),'外部第二次改写');
  await expect(page.locator('#status')).toContainText('磁盘文件已变化');await expect(page.locator('.cm-content')).toContainText('本地未保存');await expect(page.locator('#dirty')).toHaveText('有未保存修改');
 });
+
+test('真实桌面后台重建保留快照索引并恢复搜索',async({desktopPage:page,vault},testInfo)=>{
+ await writeFile(resolve(vault,'A.md'),'后台重建可搜索');await openVault(page,vault);await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 1 篇');
+ const folder=testInfo.outputPath('app-data','vaults');const ids=await readdir(folder);const db=new DatabaseSync(resolve(folder,ids[0],'index.db'));
+ try{
+  db.prepare("INSERT INTO snapshot_index VALUES('A.md','v1','snapshots/a',1,1)").run();
+  const before=db.prepare("SELECT value FROM meta WHERE key='last_full_build_ms'").get()?.value;
+  await page.getByRole('button',{name:'后台重建索引',exact:true}).click();await expect(page.locator('#status')).toContainText('已启动后台重建：rebuild-');
+  await expect.poll(()=>db.prepare("SELECT value FROM meta WHERE key='last_full_build_ms'").get()?.value).not.toBe(before);
+  await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 1 篇');expect(db.prepare('SELECT count(*) AS n FROM snapshot_index').get()?.n).toBe(1);
+  await page.getByLabel('搜索笔记',{exact:true}).fill('后台重建');await page.getByRole('button',{name:'搜索',exact:true}).click();await expect(page.locator('#searchInfo')).toContainText('1 条结果');
+ }finally{db.close();}
+});
+
+test('真实桌面迁移校验文件并保留原目录',async({desktopPage:page,vault},testInfo)=>{
+ await writeFile(resolve(vault,'迁移.md'),'迁移后的检索内容');await mkdir(resolve(vault,'attachments'));await writeFile(resolve(vault,'attachments','image.bin'),new Uint8Array([0,255,1]));await openVault(page,vault);await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 1 篇');
+ const target=testInfo.outputPath('migrated-vault');page.once('dialog',dialog=>dialog.accept(target));await page.getByRole('button',{name:'迁移笔记库目录',exact:true}).click();
+ await expect(page.locator('#status')).toContainText('迁移完成，已切换到新目录');
+ expect(await readFile(resolve(vault,'迁移.md'),'utf8')).toBe('迁移后的检索内容');expect(await readFile(resolve(target,'迁移.md'),'utf8')).toBe('迁移后的检索内容');expect(await readFile(resolve(target,'attachments','image.bin'))).toEqual(await readFile(resolve(vault,'attachments','image.bin')));
+ await expect(page.locator('#vaultPath')).toHaveValue(/migrated-vault$/);await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 1 篇');
+ const settings=JSON.parse(await readFile(testInfo.outputPath('app-data','settings.json'),'utf8'));expect(settings.vaultPath).toMatch(/migrated-vault$/);
+ await page.getByLabel('搜索笔记',{exact:true}).fill('迁移后的');await page.getByRole('button',{name:'搜索',exact:true}).click();await expect(page.locator('#searchInfo')).toContainText('1 条结果');
+});
