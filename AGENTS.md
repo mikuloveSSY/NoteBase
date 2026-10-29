@@ -3,8 +3,8 @@
 ## 用户已确定的要求
 
 - 后续所有版本迭代必须推送到 https://github.com/mikuloveSSY/NoteBase ，并维护仓库根目录 CHANGELOG.md。
-- 我们承担四人分工方案中的成员一：fs-store、index-store、index-worker、watcher、search-svc、路径规则、数据库结构和数据目录迁移。
-- 计划见 docs/成员一开发计划.md。旧 AI 交接包 W1–W4 的归属不能覆盖新版四人分工方案。
+- 按当前任务指定的成员身份工作；不要把历史作者的身份视为所有协作者的身份。成员一负责 fs-store、index-store、index-worker、watcher、search-svc、路径规则、数据库结构和数据目录迁移；计划见 docs/成员一开发计划.md。
+- 当前 `codex/member4-ui-shell-integration` 分支承担成员四：ui、app-shell、logger、IPC 集成、验证和交接；范围见 notebase-starter/docs/成员四交接.md。旧 AI 交接包 W1–W4 的归属不能覆盖新版四人分工方案。
 
 ## 工作与交付
 

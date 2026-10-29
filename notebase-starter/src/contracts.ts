@@ -7,8 +7,17 @@ export const ERROR_CODES = ['E_IO_DISK_FULL','E_IO_PERMISSION','E_IO_LOCKED','E_
 export interface Request {id:string;command:Command;payload:Record<string,unknown>;clientSeq:number}
 export interface AppError {code:typeof ERROR_CODES[number];message:string;detail:Record<string,unknown>;retryable:boolean}
 export type Response<T> = {id:string;ok:true;data:T}|{id:string;ok:false;error:AppError};
-export interface NoteEntry {path:string;title:string;mtimeMs:number;hasAttachment:boolean}
-export interface NoteContent {path:string;title:string;body:string;frontmatter:Record<string,unknown>;frontmatterError:string|null;contentHash:string;mtimeMs:number;sizeBytes:number;encoding:string;lineEnding:string;readOnly:boolean}
+export interface NoteEntry {path:string;title:string;mtimeMs:number;hasAttachment:boolean;tags?:string[];favorite?:boolean;pinned?:boolean}
+export interface NoteContent {path:string;title:string;body:string;frontmatter:Record<string,unknown>;frontmatterError:string|null;contentHash:string;mtimeMs:number;sizeBytes:number;encoding:string;lineEnding:string;readOnly:boolean;conflictPaused?:boolean;links?:NoteLink[]}
+export interface NoteLink {target:string;label?:string;line:number;col:number;start:number;end:number}
+export interface DraftEntry {id:string;path:string;body:string;baseHash:string;clientId:string;clientSeq:number;savedAtMs:number}
+export interface TrashEntry {trashPath:string;originalPath:string;deletedAtMs:number}
+export interface RenamePlan {id:string;from:string;to:string;affectedFiles:{path:string;preview:unknown}[];totalReplacements:number;state?:string}
+export interface Backlink {source?:string;sourcePath?:string;line:number;col:number;snippet?:string;context?:string;circular?:boolean;ambiguous?:boolean;candidates?:string[]}
+export interface Mention {sourcePath:string;text:string;line:number;col:number;start:number;end:number}
+export interface LinkResolution {targetPath?:string|null;candidates:string[];ambiguous:boolean}
+export interface GraphData {nodes:({path:string;id?:string;title?:string}|string)[];edges:{from:string;to:string}[]}
+export interface AttachmentResult {attachmentPath:string;relativePath:string;markdown:string}
 export interface SaveResult {path:string;contentHash:string;mtimeMs:number;bytesWritten:number;snapshotCreated:boolean;indexQueued:boolean;warnings:string[]}
 export interface SearchQuery {query:string;filters?:{tags?:string[];pathPrefix?:string;mtimeFromMs?:number|null;mtimeToMs?:number|null;createdFromMs?:number|null;createdToMs?:number|null;hasAttachment?:boolean|null};sort?:'relevance'|'mtime';limit?:number;cursor?:string|null}
 export interface SearchPage {items:{path:string;title:string;snippet:string;score:number;matchedIn:string;mtimeMs:number}[];nextCursor:string|null;totalApprox:number;tookMs:number;degraded:boolean;degradeReason:string|null}

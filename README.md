@@ -1,13 +1,16 @@
 # NoteBase
 
-当前软件版本为 **0.6.0，成员一重建与迁移**。可运行工程位于 [notebase-starter](notebase-starter/README.md)，原始 0.1.0 ZIP 保留归档。
+本分支为 **成员四 UI、外壳与团队集成**，保留软件基线 **0.6.0**，尚非正式发布。可运行工程位于 [notebase-starter](notebase-starter/README.md)，原始 0.1.0 ZIP 保留归档。
 
-本版在文件存储闭环上增加库外 SQLite 索引、后台构建和索引状态显示。已接入中文检索；已接入增量监视；编辑自动保存等尚未实现。
+已整合主干的检索、监视、重建与迁移，以及成员二分支的自动保存、草稿恢复、冲突、属性、回收站和链接。成员四补齐主题与编辑偏好、快捷键、命令面板、标签页、多窗口、原生菜单、脱敏日志及集成测试。预览、导出、备份、版本历史和同步等待成员三交付。
 
 - [版本说明](CHANGELOG.md)
 - [成员一开发计划](docs/成员一开发计划.md)
 - [存储接口交接](notebase-starter/docs/存储初版交接.md)
 - [索引基础交接](notebase-starter/docs/索引基础交接.md)
-- [本版验证记录](notebase-starter/docs/重建迁移交接-v0.6.0.md)
+- [成员四交接与职责清单](notebase-starter/docs/成员四交接.md)
+- [成员四验证记录](notebase-starter/docs/成员四验证记录.md)
+- [操作说明](notebase-starter/docs/成员四操作说明.md)
+- [成员二交接（保留原分支历史说明）](notebase-starter/docs/成员二交接.md)
 
 在工程目录执行 `npm ci`、`npm run desktop` 启动桌面开发环境。Node、Rust MSVC、Visual Studio C++ 和 WebView2 要求详见工程 README。
