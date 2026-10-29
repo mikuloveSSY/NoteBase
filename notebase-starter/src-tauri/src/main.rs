@@ -12,13 +12,36 @@ async fn dispatch(expected: &str, request: Request, app: Shared) -> Response {
         };
     }
     let id = request.id.clone();
-    match tauri::async_runtime::spawn_blocking(move || match app.lock() {
-        Ok(mut app) => app.dispatch(request),
-        Err(_) => Response::Err {
-            id: request.id,
-            ok: false,
-            error: notebase_core::domain::AppError::new("E_INTERNAL", "应用状态锁异常"),
-        },
+    match tauri::async_runtime::spawn_blocking(move || {
+        if request.command == "search" {
+            let session = match app.lock() {
+                Ok(app) => app.search_session(),
+                Err(_) => Err(notebase_core::domain::AppError::new(
+                    "E_INTERNAL",
+                    "应用状态锁异常",
+                )),
+            };
+            return match session.and_then(|session| session.search(&request.payload)) {
+                Ok(data) => Response::Ok {
+                    id: request.id,
+                    ok: true,
+                    data,
+                },
+                Err(error) => Response::Err {
+                    id: request.id,
+                    ok: false,
+                    error,
+                },
+            };
+        }
+        match app.lock() {
+            Ok(mut app) => app.dispatch(request),
+            Err(_) => Response::Err {
+                id: request.id,
+                ok: false,
+                error: notebase_core::domain::AppError::new("E_INTERNAL", "应用状态锁异常"),
+            },
+        }
     })
     .await
     {

@@ -156,3 +156,43 @@ fn malformed_queries_are_distinct_from_empty_results_and_html_is_escaped() {
     assert!(!snippet.contains("<script>"));
     assert!(snippet.contains("&lt;<b>script</b>&gt;"));
 }
+
+#[test]
+fn parallel_pool_queries_preserve_counts_and_empty_past_end_pages() {
+    let (_dir, store) = fixture();
+    std::thread::scope(|scope| {
+        let jobs: Vec<_> = (0..8)
+            .map(|_| {
+                scope.spawn(|| {
+                    for _ in 0..20 {
+                        assert_eq!(
+                            store.search(&json!({"query":"动态"})).unwrap()["totalApprox"],
+                            3
+                        );
+                        assert_eq!(
+                            store.search(&json!({"query":"DP"})).unwrap()["totalApprox"],
+                            1
+                        );
+                    }
+                })
+            })
+            .collect();
+        for job in jobs {
+            job.join().unwrap();
+        }
+    });
+    let first = query(&store, json!({"query":"动态","limit":1}));
+    let signature = first["nextCursor"]
+        .as_str()
+        .unwrap()
+        .split_once(':')
+        .unwrap()
+        .0;
+    let page = query(
+        &store,
+        json!({"query":"动态","limit":1,"cursor":format!("{signature}:999")}),
+    );
+    assert_eq!(page["totalApprox"], 3);
+    assert_eq!(page["items"], json!([]));
+    assert!(page["nextCursor"].is_null());
+}

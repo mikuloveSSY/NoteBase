@@ -43,6 +43,7 @@ struct State {
     active: bool,
 }
 pub struct BackgroundIndex {
+    readers: Arc<Mutex<Option<std::sync::Weak<SqliteIndexStore>>>>,
     full_rebuild: Arc<AtomicBool>,
     rebuild_pending: Arc<Mutex<Option<String>>>,
     vault: String,
@@ -121,6 +122,8 @@ impl BackgroundIndex {
         options: WorkerOptions,
     ) -> Self {
         let vault_path = vault.clone();
+        let readers = Arc::new(Mutex::new(None));
+        let worker_readers = readers.clone();
         let full_rebuild = Arc::new(AtomicBool::new(true));
         let full_rebuild_worker = full_rebuild.clone();
         let rebuild_pending = Arc::new(Mutex::new(None));
@@ -163,7 +166,7 @@ impl BackgroundIndex {
                         }
                     };
                     if let Some(archive)=&recovered.archived{if state2.lock().unwrap().active{events2("error.raised",json!({"code":"E_INDEX_UNAVAILABLE","message":"原索引已归档并重新构建；请核对历史业务状态","detail":{"recoveryDir":archive,"businessRestored":recovered.business_restored}}));}}
-                    let index=recovered.store;
+                    let index=Arc::new(recovered.store);*worker_readers.lock().unwrap()=Some(Arc::downgrade(&index));
                     let store = FsStore::open(&vault)?;
                     let watcher_failed=Arc::new(AtomicBool::new(false));
                     let mut watcher=if options.native_watch{
@@ -233,6 +236,7 @@ impl BackgroundIndex {
             }
         };
         Self {
+            readers,
             full_rebuild,
             rebuild_pending,
             vault: vault_path,
@@ -267,6 +271,9 @@ impl Drop for BackgroundIndex {
     }
 }
 impl IndexSession for BackgroundIndex {
+    fn cancel(&self) {
+        self.deactivate();
+    }
     fn rebuild(&self) -> Result<String> {
         let mut state = self
             .state
@@ -339,15 +346,26 @@ impl IndexSession for BackgroundIndex {
                 .state
                 .lock()
                 .map_err(|_| unavailable("索引状态锁异常"))?;
-            if state.status.state != IndexState::Ready
-                && state.status.state != IndexState::Rebuilding
+            if !state.active
+                || (state.status.state != IndexState::Ready
+                    && state.status.state != IndexState::Rebuilding)
             {
                 return Err(unavailable("索引未就绪或已过期，请重新打开库"));
             }
             state.generation
         };
         let rebuilding = self.status().state == IndexState::Rebuilding;
-        let mut result = match super::search::search_path(&self.db_path, query) {
+        let reader = self
+            .readers
+            .lock()
+            .unwrap()
+            .as_ref()
+            .and_then(std::sync::Weak::upgrade);
+        let read = reader
+            .as_ref()
+            .map(|index| index.search(query))
+            .unwrap_or_else(|| Err(unavailable("索引尚未打开")));
+        let mut result = match read {
             Ok(result) => result,
             Err(error) if rebuilding && error.code == "E_INDEX_UNAVAILABLE" => {
                 scan_search(&self.db_path, &self.vault, query)?
@@ -364,7 +382,8 @@ impl IndexSession for BackgroundIndex {
             .state
             .lock()
             .map_err(|_| unavailable("索引状态锁异常"))?;
-        if state.generation != generation
+        if !state.active
+            || state.generation != generation
             || !matches!(
                 state.status.state,
                 IndexState::Ready | IndexState::Rebuilding

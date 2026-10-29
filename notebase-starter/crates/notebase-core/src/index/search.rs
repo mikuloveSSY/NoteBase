@@ -264,32 +264,37 @@ pub fn search(connection: &Connection, payload: &Value) -> Result<Value> {
     let mut predicates = Vec::new();
     let mut scores = Vec::new();
     let mut matches = Vec::new();
-    for term in &terms {
+    let mut ctes = Vec::new();
+    for (i, term) in terms.iter().enumerate() {
         let p = bind(&mut values, like(&term.text));
-        let title = text_match("n.title", &p);
-        let alias = format!(
-            "EXISTS(SELECT 1 FROM aliases a WHERE a.note_path=n.path AND {})",
-            text_match("a.alias", &p)
-        );
-        let tag = format!(
-            "EXISTS(SELECT 1 FROM tags t WHERE t.note_path=n.path AND {})",
-            text_match("t.tag", &p)
-        );
+        ctes.push(format!(
+            "title{i} AS MATERIALIZED (SELECT rowid AS id FROM notes WHERE {})",
+            text_match("title", &p)
+        ));
+        ctes.push(format!("alias{i} AS MATERIALIZED (SELECT rowid AS id FROM notes WHERE path IN (SELECT note_path FROM aliases WHERE {}))",text_match("alias", &p)));
+        ctes.push(format!("tag{i} AS MATERIALIZED (SELECT rowid AS id FROM notes WHERE path IN (SELECT note_path FROM tags WHERE {}))",text_match("tag", &p)));
+        let title = format!("n.rowid IN (SELECT id FROM title{i})");
+        let alias = format!("n.rowid IN (SELECT id FROM alias{i})");
+        let tag = format!("n.rowid IN (SELECT id FROM tag{i})");
         let expression = match term.field.as_str() {
             "title" => title.clone(),
             "path" => text_match("n.path", &p),
             "tag" => tag.clone(),
             _ => {
+                // 各命中来源只扫描一次；避免对全库逐行运行关联子查询。
                 let body = if term.text.chars().count() >= 3 {
                     let fts = bind(
                         &mut values,
                         format!("\"{}\"", term.text.replace('"', "\"\"")),
                     );
-                    format!("n.rowid IN(SELECT rowid FROM note_fts WHERE note_fts MATCH {fts})")
+                    format!("SELECT rowid FROM note_fts WHERE note_fts MATCH {fts}")
                 } else {
-                    text_match("f.c2", &p)
+                    format!(
+                        "SELECT id FROM note_fts_content WHERE {}",
+                        text_match("c2", &p)
+                    )
                 };
-                format!("({title} OR {alias} OR {tag} OR {body})")
+                format!("n.rowid IN (SELECT id FROM title{i} UNION ALL SELECT id FROM alias{i} UNION ALL SELECT id FROM tag{i} UNION ALL {body})")
             }
         };
         predicates.push(if term.negative {
@@ -340,17 +345,6 @@ pub fn search(connection: &Connection, payload: &Value) -> Result<Value> {
         let p = bind(&mut values, i64::from(value));
         predicates.push(format!("n.has_attachment={p}"));
     }
-    let base = format!(
-        "FROM notes n JOIN note_fts_content f ON f.id=n.rowid WHERE {}",
-        predicates.join(" AND ")
-    );
-    let total: i64 = tx
-        .query_row(
-            &format!("SELECT count(*) {base}"),
-            params_from_iter(values.iter()),
-            |r| r.get(0),
-        )
-        .map_err(|e| super::unavailable(e.to_string()))?;
     let score = if scores.is_empty() {
         "0".into()
     } else {
@@ -366,27 +360,35 @@ pub fn search(connection: &Connection, payload: &Value) -> Result<Value> {
     } else {
         format!("CASE {} ELSE 'body' END", matches.join(" "))
     };
-    let sql=format!("SELECT n.path,n.title,f.c2,n.mtime_ms,({score}) AS score,{matched} {base} ORDER BY {order} LIMIT {} OFFSET {offset}",q.limit);
+    // 同一快照内物化候选一次，共用计数与分页；正文只在首屏选出后读取。
+    let outer_order = order.replace("n.", "p.");
+    let sql = format!("WITH {}, candidates AS MATERIALIZED (SELECT n.rowid AS id FROM notes n WHERE {}), page AS (SELECT n.rowid AS id,n.path,n.title,n.mtime_ms,({score}) AS score,{matched} AS matched FROM candidates c JOIN notes n ON n.rowid=c.id ORDER BY {order} LIMIT {} OFFSET {offset}) SELECT p.path,p.title,f.c2,p.mtime_ms,p.score,p.matched,t.total FROM (SELECT count(*) AS total FROM candidates) t LEFT JOIN page p ON 1 LEFT JOIN note_fts_content f ON f.id=p.id ORDER BY {outer_order}",ctes.join(","),predicates.join(" AND "),q.limit);
     let mut stmt = tx
         .prepare(&sql)
         .map_err(|e| super::unavailable(e.to_string()))?;
-    let rows = stmt
-        .query_map(params_from_iter(values.iter()), |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, String>(1)?,
-                r.get::<_, String>(2)?,
-                r.get::<_, i64>(3)?,
-                r.get::<_, f64>(4)?,
-                r.get::<_, String>(5)?,
-            ))
-        })
+    let mut rows = stmt
+        .query(params_from_iter(values.iter()))
         .map_err(|e| super::unavailable(e.to_string()))?;
     let mut items = Vec::new();
-    for row in rows {
-        let (path, title, body, mtime, score, matched) =
-            row.map_err(|e| super::unavailable(e.to_string()))?;
-        items.push(json!({"path":path,"title":title,"snippet":snippet(&body,&terms),"score":score,"matchedIn":matched,"mtimeMs":mtime}));
+    let mut total = 0i64;
+    while let Some(row) = rows.next().map_err(|e| super::unavailable(e.to_string()))? {
+        let mut read = || -> rusqlite::Result<Option<Value>> {
+            total = row.get(6)?;
+            let Some(path) = row.get::<_, Option<String>>(0)? else {
+                return Ok(None);
+            };
+            let title: String = row.get(1)?;
+            let body: String = row.get(2)?;
+            let mtime: i64 = row.get(3)?;
+            let score: f64 = row.get(4)?;
+            let matched: String = row.get(5)?;
+            Ok(Some(
+                json!({"path":path,"title":title,"snippet":snippet(&body,&terms),"score":score,"matchedIn":matched,"mtimeMs":mtime}),
+            ))
+        };
+        if let Some(item) = read().map_err(|e| super::unavailable(e.to_string()))? {
+            items.push(item);
+        }
     }
     let next = offset + items.len();
     Ok(

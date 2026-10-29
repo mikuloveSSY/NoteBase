@@ -17,8 +17,9 @@ use std::{
 pub const SCHEMA: &str = include_str!("schema.sql");
 
 pub struct SqliteIndexStore {
-    writer: Mutex<Connection>,
+    // 先关闭读连接，最后关闭写连接，正常退出时完成 WAL 检查点。
     readers: [Mutex<Connection>; 2],
+    writer: Mutex<Connection>,
     next_reader: AtomicUsize,
     path: PathBuf,
     // 保证遵守端口的多个进程/会话也不能同时持有写连接。
@@ -54,7 +55,7 @@ fn configure(connection: &Connection, writer: bool) -> Result<()> {
         }
         db(connection.execute_batch("PRAGMA synchronous=NORMAL;"))?;
     } else {
-        db(connection.execute_batch("PRAGMA query_only=ON;"))?;
+        db(connection.execute_batch("PRAGMA query_only=ON; PRAGMA mmap_size=268435456;"))?;
     }
     Ok(())
 }
@@ -270,7 +271,10 @@ impl SqliteIndexStore {
             db(tx.commit())
         })();
         let detach = db(writer.execute_batch("DETACH DATABASE candidate"));
-        result.and(detach)
+        result.and(detach)?;
+        db(writer.execute("INSERT INTO note_fts(note_fts) VALUES('optimize')", []))?;
+        // busy 时 SQLite 保留 WAL，不影响已提交数据。
+        db(writer.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)"))
     }
     pub(crate) fn stable_scan_epoch(&self) -> Result<()> {
         use sha2::{Digest, Sha256};

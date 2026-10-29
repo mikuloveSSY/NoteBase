@@ -6,15 +6,16 @@ use crate::index::{IndexSession, IndexStatus};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 type StoreFactory = Box<dyn Fn(&str) -> Result<Box<dyn NoteStore>> + Send + Sync>;
-pub type IndexFactory = Box<dyn Fn(&str, &str) -> Box<dyn IndexSession> + Send + Sync>;
+pub type IndexFactory = Box<dyn Fn(&str, &str) -> Arc<dyn IndexSession> + Send + Sync>;
 pub struct App {
     store: Option<Box<dyn NoteStore>>,
     known: HashMap<String, String>,
     factory: StoreFactory,
     index_factory: Option<IndexFactory>,
-    index: Option<Box<dyn IndexSession>>,
+    index: Option<Arc<dyn IndexSession>>,
     location: Option<Box<dyn crate::migration::VaultLocation>>,
 }
 fn hash(bytes: &[u8]) -> String {
@@ -28,6 +29,12 @@ fn title(path: &str) -> String {
         .to_string()
 }
 impl App {
+    pub fn search_session(&self) -> Result<Arc<dyn IndexSession>> {
+        self.store()?;
+        self.index
+            .clone()
+            .ok_or_else(|| crate::index::unavailable("未配置索引"))
+    }
     pub fn new(factory: StoreFactory) -> Self {
         Self {
             store: None,
@@ -108,7 +115,9 @@ impl App {
                 let store = (self.factory)(&copied)?;
                 store.list(&RelPath::root())?;
                 location.save_path(&copied)?;
-                self.index = None;
+                if let Some(old) = self.index.take() {
+                    old.cancel();
+                }
                 let id = hash(store.vault_path().as_bytes())[7..23].to_owned();
                 self.index = self
                     .index_factory
@@ -132,7 +141,9 @@ impl App {
                     .is_some_and(|index| same_vault && index.refresh());
                 if !reused {
                     // 旧会话取消后不再发事件；后台任务始终绑定自己的库路径。
-                    self.index = None;
+                    if let Some(old) = self.index.take() {
+                        old.cancel();
+                    }
                     self.index = self
                         .index_factory
                         .as_ref()
@@ -334,5 +345,13 @@ impl App {
             .as_ref()
             .map(|index| index.status())
             .unwrap_or_default()
+    }
+}
+
+impl Drop for App {
+    fn drop(&mut self) {
+        if let Some(index) = &self.index {
+            index.cancel();
+        }
     }
 }

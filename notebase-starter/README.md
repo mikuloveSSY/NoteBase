@@ -1,6 +1,8 @@
 # NoteBase 主干基础工程
 
-这是四人小组的共同工程，当前为 **0.6.0 成员一重建与迁移**。已在 Windows 验证“打开文件夹 → 新建笔记 → 编辑 → 手动保存 → 重新打开”，后续按四人分工完善性能、链接、渲染和备份。
+这是四人小组的共同工程，当前为 **0.7.0 成员一性能优化与交接**。已在 Windows 验证“打开文件夹 → 新建笔记 → 编辑 → 手动保存 → 重新打开”，后续按四人分工完善性能、链接、渲染和备份。
+
+当前接入请先阅读 [成员一交接总览](docs/成员一交接总览-v0.7.0.md)，各旧版交接文档保留历史行为。
 
 ## 现在具备什么
 
@@ -12,11 +14,11 @@
 - 基础路径校验，拒绝越界路径、系统保留名和符号链接。可读取 frontmatter，但编辑器仍编辑完整原文件，不重写 YAML。
 - 浏览器联调模式，仅使用内存数据，刷新即重置；界面会显著标注。浏览器模式不能验证真实磁盘写入。
 
-**尚未完成**：自动保存、草稿、崩溃恢复、链接、Markdown 预览、导出、回收站、备份、同步和设置。没有达到交接包 W1 的完成定义，也没有完成整套需求验收。
+**尚未完成**：自动保存、草稿、崩溃恢复、链接、Markdown 预览、导出、回收站、备份、同步和完整设置（当前只支持 vaultPath）。没有达到交接包 W1 的完成定义，也没有完成整套需求验收。
 
 ## Windows 首次启动
 
-打开库时会在后台建立 SQLite 索引，右侧显示状态。缓存默认位于应用数据目录的 `vaults/<vault_id>/index.db`，不放进笔记库。本版保存和外部文件变化会自动更新索引；监听失败时降级为默认每 300 秒对账。索引失败不阻止文件编辑。本版范围见 [增量监视交接](docs/重建迁移交接-v0.6.0.md)。
+打开库时会在后台建立 SQLite 索引，右侧显示状态。缓存默认位于应用数据目录的 `vaults/<vault_id>/index.db`，不放进笔记库。本版保存和外部文件变化会自动更新索引；监听失败时降级为默认每 300 秒对账。索引失败不阻止文件编辑。本版范围见 [重建迁移交接](docs/重建迁移交接-v0.6.0.md)。
 
 1. 安装 Node.js 22.12+（或兼容的较新 LTS）、Rust 稳定版、Visual Studio Build Tools 的“使用 C++ 的桌面开发”工作负载及 Windows SDK。确认使用 Rust 的 MSVC 工具链。
 2. 确认 Microsoft Edge WebView2 Runtime 可用。Windows 首次编译需联网下载 npm 与 Cargo 依赖。
@@ -62,7 +64,7 @@ Windows 可执行文件输出到 `src-tauri/target/release/notebase.exe`。桌�
 
 | 成员 | 当前入口 | 接下来先做的一件事 |
 |---|---|---|
-| 一 存储与检索 | `crates/notebase-core/src/infra.rs`、`domain.rs` | 在已接入的 SQLite 基础上实现完整 SearchService，再补增量队列与 watcher；保留中文短查询回退 |
+| 一 存储与检索 | `crates/notebase-core/src/infra.rs`、`domain.rs` | 维护存储、检索、监视、恢复及迁移；完成性能证据并处理团队联调 |
 | 二 编辑与知识组织 | `crates/notebase-core/src/application.rs` | 从现有笔记用例拆出 note-svc，补自动保存、草稿与恢复；随后接 link-svc |
 | 三 导出与数据保障 | Rust 核心的应用层与基础设施层扩展位置 | 先实现 renderer 端口和 comrak，供预览与导出共用，再做备份及版本快照 |
 | 四 界面与集成 | `src/`、`src-tauri/` | 保持现有读写闭环可用，逐项连接其余服务；统一维护 IPC、界面、日志和打包 |
@@ -80,7 +82,7 @@ Windows 可执行文件输出到 `src-tauri/target/release/notebase.exe`。桌�
 
 本版已完成 Windows 核心测试、前端构建、契约测试、浏览器回归、桌面 release 编译和真实桌面 IPC 测试，见 [本版验证记录](docs/重建迁移交接-v0.6.0.md)。原 [0.1.0 验证记录](docs/验证记录.md) 仅作为历史记录。
 
-NoteStore 已提供 RelPath 等值对象及 read、write_atomic、create_new、rename、delete、list、stat；原始字节读写签名仍需与成员二对齐。底层重命名、删除不代表对应业务命令已实现。初始索引、增量队列与 watcher 已接入，保存响应 indexQueued 表示任务接收；快照仍未接入，snapshotCreated=false。全库枚举、全局串行锁和路径竞态仍需完善；没有完成 10 万篇性能验收。接口取舍和需求状态见 [存储初版交接](docs/存储初版交接.md)。
+NoteStore 已提供 RelPath 等值对象及 read、write_atomic、create_new、rename、delete、list、stat；原始字节读写签名仍需与成员二对齐。底层重命名、删除不代表对应业务命令已实现。初始索引、增量队列与 watcher 已接入，保存响应 indexQueued 表示任务接收；快照仍未接入，snapshotCreated=false。桌面搜索已移出全局锁并复用两个只读连接；其余命令仍串行。性能证据以 0.7.0 性能报告为准，路径竞态和大库枚举仍需注意。接口取舍和需求状态见 [存储初版交接](docs/存储初版交接.md)。
 
 ## 技术资料
 

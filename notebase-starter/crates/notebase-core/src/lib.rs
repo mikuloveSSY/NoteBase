@@ -13,7 +13,7 @@ pub fn new_indexed_app(data_root: std::path::PathBuf, events: index::worker::Eve
     let settings = data_root.join("settings.json");
     new_local_app()
         .with_index(Box::new(move |vault, id| {
-            Box::new(index::worker::BackgroundIndex::start(
+            std::sync::Arc::new(index::worker::BackgroundIndex::start(
                 data_root.clone(),
                 vault.into(),
                 id.into(),

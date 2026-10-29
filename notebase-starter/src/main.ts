@@ -73,7 +73,7 @@ async function pollIndex(){
  if(opened){try{
   const value=await call<IndexStatus>('index_status',{});
   const labels={ready:'索引已就绪',rebuilding:'正在构建索引',offline:'索引更新中或存在不可索引文件',unavailable:'索引不可用'};
-  $('indexStatus').textContent=`${labels[value.state]} · ${value.noteCount} 篇`+(value.progress?` · ${value.progress.done}/${value.progress.total}`:'');
+  $('indexStatus').textContent=`${labels[value.state]} · ${value.noteCount} 篇`+(value.noteCount>=100000?' · 大库模式：短词检索使用正文扫描，可能需要更长时间':'')+(value.progress?` · ${value.progress.done}/${value.progress.total}`:'');
   if(externalTreeDirty&&!busy){externalTreeDirty=false;await run(()=>list());}
  }catch(error){$('indexStatus').textContent='索引不可用：'+(error instanceof Error?error.message:String(error));}}
  window.setTimeout(()=>void pollIndex(),1000);
