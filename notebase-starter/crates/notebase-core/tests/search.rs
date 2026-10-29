@@ -196,3 +196,53 @@ fn parallel_pool_queries_preserve_counts_and_empty_past_end_pages() {
     assert_eq!(page["items"], json!([]));
     assert!(page["nextCursor"].is_null());
 }
+
+#[test]
+fn optimized_title_candidates_keep_literal_unicode_and_ascii_case_semantics() {
+    let (_dir, store) = fixture();
+    store
+        .upsert_batch(&[NoteRecord {
+            path: RelPath::new("unicode.md").unwrap(),
+            title: "中文% _中文 😀中文 É中文 é中文 AbC á中".into(),
+            body: String::new(),
+            size_bytes: 0,
+            mtime_ms: 0,
+            content_hash: "b".repeat(64),
+            created_ms: None,
+            updated_ms: None,
+            has_attachment: false,
+            aliases: vec![],
+            tags: vec![],
+        }])
+        .unwrap();
+    for term in [
+        "中文%",
+        "_中文",
+        "😀中文",
+        "É中文",
+        "é中文",
+        "AbC",
+        "abc",
+        "á中",
+        "%",
+        "_",
+        "😀中",
+        "DP",
+        "dp",
+    ] {
+        let pattern = format!(
+            "%{}%",
+            term.replace('\\', "\\\\")
+                .replace('%', "\\%")
+                .replace('_', "\\_")
+        );
+        let title_matches:i64=store.read(|c|c.query_row("SELECT count(*) FROM notes WHERE path='unicode.md' AND title LIKE ?1 ESCAPE '\\'",[pattern],|r|r.get(0))).unwrap();
+        let page = store.search(&json!({"query":term})).unwrap();
+        let found = page["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v["path"] == "unicode.md");
+        assert_eq!(found, title_matches == 1, "{term}");
+    }
+}

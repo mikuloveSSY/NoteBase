@@ -8,7 +8,7 @@ use std::{
     collections::BTreeSet,
     fs,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 const ID: &str = "0123456789abcdef";
@@ -66,10 +66,14 @@ fn expected(query: &str, count: usize) -> BTreeSet<String> {
         .map(path)
         .collect()
 }
-fn wait_ready(worker: &BackgroundIndex) {
+fn wait_ready(worker: &BackgroundIndex, fatal: &Mutex<Option<Value>>) {
     let start = Instant::now();
     let mut last = Instant::now();
     loop {
+        assert!(
+            fatal.lock().unwrap().is_none(),
+            "benchmark stopped after backend failure; see failure.json"
+        );
         let status = worker.status();
         if status.state == IndexState::Ready {
             break;
@@ -173,9 +177,17 @@ fn main() {
     assert_eq!(corpus["notes"], count);
 
     let started = Instant::now();
-    let events = Arc::new(|name: &str, payload: Value| {
+    let fatal = Arc::new(Mutex::new(None));
+    let fatal_sink = fatal.clone();
+    let failure_path = root.join("failure.json");
+    let measuring_watch = mode == "watch";
+    let events = Arc::new(move |name: &str, payload: Value| {
         if name == "error.raised" {
             eprintln!("{name}: {payload}");
+            if measuring_watch || !payload["detail"]["pollIntervalMs"].is_number() {
+                let _ = fs::write(&failure_path, serde_json::to_vec_pretty(&payload).unwrap());
+                *fatal_sink.lock().unwrap() = Some(payload);
+            }
         }
     });
     let options = WorkerOptions {
@@ -190,7 +202,7 @@ fn main() {
         events,
         options,
     );
-    wait_ready(&worker);
+    wait_ready(&worker, &fatal);
     let startup_ms = started.elapsed().as_millis();
     if mode == "build" {
         let result = json!({"notes":count,"startupBuildMs":startup_ms,"corpusBytes":size(&vault),"indexBytesLive":worker.status().index_bytes});
@@ -208,11 +220,11 @@ fn main() {
     }
     // 首次启动对账可能改变游标；等待进度归稳后开始分页验证。
     std::thread::sleep(Duration::from_secs(1));
-    wait_ready(&worker);
+    wait_ready(&worker, &fatal);
     if mode == "rebuild" {
         let start = Instant::now();
         let job = worker.rebuild().unwrap();
-        wait_ready(&worker);
+        wait_ready(&worker, &fatal);
         let result = json!({"notes":count,"jobId":job,"rebuildMs":start.elapsed().as_millis(),"indexBytesLive":worker.status().index_bytes,"corpusBytes":size(&vault)});
         worker.shutdown();
         let mut result = result;

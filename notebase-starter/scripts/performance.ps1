@@ -21,6 +21,7 @@ $record=@{
  sourceHashes=$sourceHashes
  cachePolicy='No OS cache flush; query JSON distinguishes first observed and warm repetitions'
 }
+try{$record['freePhysicalMemoryKiB']=(Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).FreePhysicalMemory}catch{$record['freePhysicalMemoryKiB']=$null}
 try{$record['physicalMemoryBytes']=(Get-CimInstance Win32_ComputerSystem -ErrorAction Stop).TotalPhysicalMemory}catch{$record['physicalMemoryBytes']=$null}
 try{$record['cpuName']=(Get-CimInstance Win32_Processor -ErrorAction Stop | Select-Object -First 1).Name}catch{$record['cpuName']=$null}
 $record | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $OutputRoot "$Mode-environment.json") -Encoding utf8

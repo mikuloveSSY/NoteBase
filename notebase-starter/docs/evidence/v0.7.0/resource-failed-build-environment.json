@@ -1,0 +1,81 @@
+{
+  "timestampUtc": "2026-10-29T07:34:03.3749839Z",
+  "mode": "build",
+  "commit": "c3de13735002d509eac8ba42d5d7dc969e04d83a",
+  "repetitions": 100,
+  "sourceHashes": [
+    {
+      "sha256": "9B68EB40831B56E0D5DC53A6B2848B0A65BB7EBF44E135E5EFB94AB4129EBADF",
+      "path": "crates/notebase-core/examples/perf.rs"
+    },
+    {
+      "sha256": "75CAA271E5F20309F89DD71B2EEE827E957C9590EE1F35AC482ACC1FC9008701",
+      "path": "crates/notebase-core/src/application.rs"
+    },
+    {
+      "sha256": "6DFCE08E7A7C1E30D3052073D8851004D683C6999175E86C7081B876C0ABFDD2",
+      "path": "crates/notebase-core/src/domain.rs"
+    },
+    {
+      "sha256": "2B49190826294B0009E98CF355C4FD289E0BF9B921CE4DAF3D4CE55417EE15B2",
+      "path": "crates/notebase-core/src/index/extract.rs"
+    },
+    {
+      "sha256": "39639C97D9B5166078E5F7E3B046390C3C285BB1D24625D4423ED4D610B7EE3E",
+      "path": "crates/notebase-core/src/index/incremental.rs"
+    },
+    {
+      "sha256": "40C06D5E2AD80A6F6051508BED1EE599161BAC529DF0415A84A2DDA4EED9FCDA",
+      "path": "crates/notebase-core/src/index/mod.rs"
+    },
+    {
+      "sha256": "547D1724A778D7595FEA6668D23E7C022A04A6057C47280C62090569A539759B",
+      "path": "crates/notebase-core/src/index/queue.rs"
+    },
+    {
+      "sha256": "41787DBF267F77FA044468BB9D03ACCEF4F4C07336B1D3A3205DF41D1F0EA5E9",
+      "path": "crates/notebase-core/src/index/recovery.rs"
+    },
+    {
+      "sha256": "B9B6FD6721F08DFB086F1EDCF43DAA37C500D02D5A69770DC7C4EDD388B1954B",
+      "path": "crates/notebase-core/src/index/schema.sql"
+    },
+    {
+      "sha256": "B129C719F9C47E3EBAE49995CAF82AED85BB6C6E912794DE513FF56AA1143BA4",
+      "path": "crates/notebase-core/src/index/search.rs"
+    },
+    {
+      "sha256": "DD9688A2A9E09BA3D67D27F621B78C20B572831F766E3DC96BF3C0A0CE6021B8",
+      "path": "crates/notebase-core/src/index/sqlite.rs"
+    },
+    {
+      "sha256": "95A143BFFF1D23C4B7B5B062380A02F7D886C592CF3F60F914E4AC1C4D679878",
+      "path": "crates/notebase-core/src/index/watcher.rs"
+    },
+    {
+      "sha256": "4F3D977AF8372392B1C58027FA0C3531ABAC5765BEB10741CF7FE723B38CBB82",
+      "path": "crates/notebase-core/src/index/worker.rs"
+    },
+    {
+      "sha256": "14516B79D96EA3FD1F2947FFA96D2E1E6A1061F6A3B72F5BBBE3C9CD57EFC73D",
+      "path": "crates/notebase-core/src/infra.rs"
+    },
+    {
+      "sha256": "DAFFFB4C27B8695E2049DB4A43F863866F5B0242AFF38793B9B3CA647D9A17B3",
+      "path": "crates/notebase-core/src/lib.rs"
+    },
+    {
+      "sha256": "8CBE973A8E717015EB8CDBA4DBC5B1B8C3060001CF090D4380D27F7CBF61F1D8",
+      "path": "crates/notebase-core/src/migration.rs"
+    }
+  ],
+  "cpuName": "13th Gen Intel(R) Core(TM) i7-13650HX",
+  "dirty": [],
+  "cpu": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+  "executableSha256": "D198280CF4D73748B1BACAF56205C6E4858EA2A9390801463D1DB20531410899",
+  "cachePolicy": "No OS cache flush; query JSON distinguishes first observed and warm repetitions",
+  "logicalProcessors": "20",
+  "physicalMemoryBytes": 16904286208,
+  "count": 100000,
+  "os": "Microsoft Windows 10.0.26200"
+}

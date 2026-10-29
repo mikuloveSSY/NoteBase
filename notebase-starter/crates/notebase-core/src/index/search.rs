@@ -267,8 +267,18 @@ pub fn search(connection: &Connection, payload: &Value) -> Result<Value> {
     let mut ctes = Vec::new();
     for (i, term) in terms.iter().enumerate() {
         let p = bind(&mut values, like(&term.text));
+        let indexed = if term.field.is_empty() && term.text.chars().count() >= 3 {
+            let fts = bind(
+                &mut values,
+                format!("\"{}\"", term.text.replace('"', "\"\"")),
+            );
+            ctes.push(format!("fts{i} AS MATERIALIZED (SELECT rowid AS id FROM note_fts WHERE note_fts MATCH {fts})"));
+            format!("rowid IN (SELECT id FROM fts{i}) AND ")
+        } else {
+            String::new()
+        };
         ctes.push(format!(
-            "title{i} AS MATERIALIZED (SELECT rowid AS id FROM notes WHERE {})",
+            "title{i} AS MATERIALIZED (SELECT rowid AS id FROM notes WHERE {indexed}{})",
             text_match("title", &p)
         ));
         ctes.push(format!("alias{i} AS MATERIALIZED (SELECT rowid AS id FROM notes WHERE path IN (SELECT note_path FROM aliases WHERE {}))",text_match("alias", &p)));
@@ -283,14 +293,17 @@ pub fn search(connection: &Connection, payload: &Value) -> Result<Value> {
             _ => {
                 // 各命中来源只扫描一次；避免对全库逐行运行关联子查询。
                 let body = if term.text.chars().count() >= 3 {
-                    let fts = bind(
-                        &mut values,
-                        format!("\"{}\"", term.text.replace('"', "\"\"")),
-                    );
-                    format!("SELECT rowid FROM note_fts WHERE note_fts MATCH {fts}")
+                    format!("SELECT id FROM fts{i}")
                 } else {
+                    // 无 ASCII 字母时，字节子串是必要条件；最终仍以转义 LIKE 判定。
+                    let prefilter = if !term.text.chars().any(|c| c.is_ascii_alphabetic()) {
+                        let literal = bind(&mut values, term.text.clone());
+                        format!("instr(c2,{literal})>0 AND ")
+                    } else {
+                        String::new()
+                    };
                     format!(
-                        "SELECT id FROM note_fts_content WHERE {}",
+                        "SELECT id FROM note_fts_content WHERE {prefilter}{}",
                         text_match("c2", &p)
                     )
                 };
