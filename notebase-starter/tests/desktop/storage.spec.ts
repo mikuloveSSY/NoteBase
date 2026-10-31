@@ -3,7 +3,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { access, mkdir, readFile, writeFile, readdir } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { createServer } from 'node:net';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 
 async function availablePort(): Promise<number> {
   const server = createServer();
@@ -21,6 +21,7 @@ const test = base.extend<{ desktopPage: Page; vault: string }>({
     await access(executable);
     const port = await availablePort();
     const app = spawn(executable, [], {
+      cwd: dirname(executable),
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: {
