@@ -5,6 +5,7 @@
 - 后续所有版本迭代必须推送到 https://github.com/mikuloveSSY/NoteBase ，并维护仓库根目录 CHANGELOG.md。
 - 按当前任务指定的成员身份工作；不要把历史作者的身份视为所有协作者的身份。成员一负责 fs-store、index-store、index-worker、watcher、search-svc、路径规则、数据库结构和数据目录迁移；计划见 docs/成员一开发计划.md。
 - 当前 main 已按用户授权汇总四人成果，integration/team-all 保留原集成提交；各组件归属不变。主干状态见 docs/主干合并记录-2026-11-01.md，功能证据见 notebase-starter/docs/四人成果整合验收.md。旧 AI 交接包 W1–W4 的归属不能覆盖新版四人分工方案。
+- 后续Windows候选与发布收口已以7b31a24合入main，当前程序交付和268项功能证据见notebase-starter/docs/Windows候选版验收.md，剩余完整需求见docs/需求完成矩阵与发布阻塞清单.md；可双击exe不等于完全版已正式发布。
 
 ## 工作与交付
 
