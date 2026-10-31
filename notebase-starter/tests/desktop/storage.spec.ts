@@ -255,6 +255,7 @@ test('成员三真实IPC导出 快照 备份校验与新位置恢复',async({des
  const body='# 真实成员三\n备份恢复内容';await writeFile(resolve(vault,'A.md'),body);await openVault(page,vault);
  const preview=await invokeCore(page,'export_note',{path:'A.md',preview:true,format:'html',body});expect(preview.ok).toBe(true);expect(preview.data.html).toContain('真实成员三');
  const html=testInfo.outputPath('export.html');const exported=await invokeCore(page,'export_note',{path:'A.md',format:'html',targetPath:html});expect(exported.ok).toBe(true);expect(await readFile(html,'utf8')).toContain('真实成员三');
+ const pdf=testInfo.outputPath('export.pdf');const printed=await invokeCore(page,'export_note',{path:'A.md',format:'pdf',targetPath:pdf});expect(printed.ok).toBe(true);expect((await readFile(pdf)).subarray(0,5).toString()).toBe('%PDF-');
  const snapshot=await invokeCore(page,'backup_create',{scope:'note',path:'A.md'});expect(snapshot.ok).toBe(true);
  const versions=await invokeCore(page,'note_list',{scope:'versions',path:'A.md'});expect(versions.ok).toBe(true);expect(versions.data.items.length).toBeGreaterThan(0);
  const backup=await invokeCore(page,'backup_create',{});expect(backup.ok).toBe(true);

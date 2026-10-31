@@ -247,18 +247,31 @@ fn export_cannot_write_inside_vault_or_escape_through_link() {
     assert!(!vault.join("export.html").exists());
 }
 #[test]
-fn pdf_returns_explicit_fallback_without_a_fake_file() {
+fn pdf_produces_real_document_or_explicit_platform_fallback() {
     let (d, _v, mut app) = setup();
     let out = d.path().join("a.pdf");
-    assert_eq!(
-        request(
-            &mut app,
-            "export_note",
-            json!({"path":"A.md","format":"pdf","targetPath":out})
-        )["error"]["code"],
-        "E_PDF_UNSUPPORTED"
+    let result = request(
+        &mut app,
+        "export_note",
+        json!({"path":"A.md","format":"pdf","targetPath":out}),
     );
-    assert!(!out.exists());
+    if result["ok"] == true {
+        let bytes = fs::read(&out).unwrap();
+        assert!(bytes.starts_with(b"%PDF-"));
+        assert!(bytes.windows(5).any(|p| p == b"%%EOF"));
+        assert_eq!(
+            request(
+                &mut app,
+                "export_note",
+                json!({"path":"A.md","format":"pdf","targetPath":out})
+            )["error"]["code"],
+            "E_PATH_INVALID"
+        );
+        assert_eq!(fs::read(&out).unwrap(), bytes);
+    } else {
+        assert_eq!(result["error"]["code"], "E_PDF_UNSUPPORTED", "{result}");
+        assert!(!out.exists());
+    }
 }
 #[test]
 fn backup_roundtrip_is_independently_extractable_and_protects_current_vault() {

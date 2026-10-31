@@ -222,12 +222,6 @@ fn render(files: &Files, path: &str, raw: &str, notes: &[LinkNote]) -> Result<Va
 pub fn export(s: &LocalDataService, p: &Value) -> Result<Value> {
     let path = field(p, "path")?;
     let format = field(p, "format")?;
-    if format == "pdf" {
-        return Err(AppError::new(
-            "E_PDF_UNSUPPORTED",
-            "当前平台 PDF 打印适配器尚未装配，请先导出 HTML",
-        ));
-    }
     if p.get("scope").and_then(Value::as_str) == Some("vault") {
         return super::backup::create(
             s,
@@ -247,7 +241,7 @@ pub fn export(s: &LocalDataService, p: &Value) -> Result<Value> {
         return Err(AppError::new("E_FILE_TOO_LARGE", "预览内容过大"));
     }
     let mut rendered = match format {
-        "html" => render(&s.files, path, raw, &notes)?,
+        "html" | "pdf" => render(&s.files, path, raw, &notes)?,
         "md" => {
             let (body, warnings) = rewrite_links(path, raw, &notes);
             json!({"markdown":body,"missingAssets":[],"warnings":warnings})
@@ -258,7 +252,11 @@ pub fn export(s: &LocalDataService, p: &Value) -> Result<Value> {
         return Ok(rendered);
     }
     let target = s.files.external(field(p, "targetPath")?)?;
-    let expected = if format == "html" { "html" } else { "md" };
+    let expected = match format {
+        "html" => "html",
+        "pdf" => "pdf",
+        _ => "md",
+    };
     if target.extension().and_then(|x| x.to_str()) != Some(expected) {
         return Err(AppError::new(
             "E_PATH_INVALID",
@@ -370,6 +368,9 @@ pub fn export(s: &LocalDataService, p: &Value) -> Result<Value> {
         }
         rendered["missingAssets"] = json!(missing);
         files::atomic(&target, md.as_bytes(), false)?;
+    } else if format == "pdf" {
+        let bytes = super::pdf::print(rendered["html"].as_str().unwrap_or_default())?;
+        files::atomic(&target, &bytes, false)?;
     } else {
         files::atomic(
             &target,

@@ -1,6 +1,7 @@
 //! Member-three ports. Business dispatch never accesses disk directly.
 pub mod backup;
 pub mod files;
+mod pdf;
 pub mod render;
 pub mod sync;
 pub mod versions;
