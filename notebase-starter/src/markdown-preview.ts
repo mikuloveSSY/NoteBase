@@ -28,7 +28,11 @@ export function mountMarkdownPreview(c: {
   preview.setAttribute('sandbox', ''); preview.referrerPolicy = 'no-referrer'; preview.hidden = true;
   pane.append(status, preview); layout.append(pane);
   const bar = document.querySelector('.editor-bar')!;
-  bar.innerHTML = '<div class="preview-modes" role="group" aria-label="Markdown 视图"><button id="previewEdit" type="button">编辑</button><button id="previewToggle" type="button">分栏预览</button><button id="previewRead" type="button">阅读</button></div><span>500ms 草稿 · 2s 停输入 · 10s 强制保存</span>';
+  bar.innerHTML = '<span>Markdown</span><span>500ms 草稿 · 2s 停输入 · 10s 强制保存</span>';
+  const modes = document.createElement('div');
+  modes.className = 'preview-modes'; modes.setAttribute('role', 'group'); modes.setAttribute('aria-label', 'Markdown 视图');
+  modes.innerHTML = '<button id="previewToggle" type="button">分栏预览</button><button id="previewEdit" type="button">编辑</button><button id="previewRead" type="button">阅读</button>';
+  document.getElementById('attachment')!.closest('label')!.after(modes);
   let revision = 0, path: string | undefined, renderedBody: string | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const buttons = { edit: 'previewEdit', split: 'previewToggle', read: 'previewRead' } as const;

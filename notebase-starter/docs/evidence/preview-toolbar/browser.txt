@@ -1,0 +1,28 @@
+
+> notebase-starter@0.7.0 test:e2e
+> playwright test tests/browser/member3.spec.ts
+
+[WebServer] (node:42404) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 15 tests using 1 worker
+
+(node:40204) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  1 tests\browser\member3.spec.ts:27:1 › 选择文件夹后自动填入并打开所选中文路径 (538ms)
+  ok  2 tests\browser\member3.spec.ts:33:1 › 取消选择不切库不丢失当前编辑 (462ms)
+  ok  3 tests\browser\member3.spec.ts:41:1 › 选择器报错时保留当前库并允许按路径打开 (421ms)
+  ok  4 tests\browser\member3.spec.ts:46:1 › 隔离的预览消费当前未保存文本 (911ms)
+  ok  5 tests\browser\member3.spec.ts:47:1 › 默认分栏且三种视图切换保留编辑内容并记住选择 (1.1s)
+  ok  6 tests\browser\member3.spec.ts:55:1 › 预览失败可继续编辑并在内容更新后重试，缺失图片有明确提示 (1.3s)
+  ok  7 tests\browser\member3.spec.ts:63:1 › 切换笔记库清除旧预览，窄窗口上下排列且专注布局保留视图入口 (667ms)
+  ok  8 tests\browser\member3.spec.ts:72:1 › 导出展示缺失资源和链接警告 (393ms)
+  ok  9 tests\browser\member3.spec.ts:73:1 › 版本可对比并在明确确认后回滚 (529ms)
+  ok 10 tests\browser\member3.spec.ts:74:1 › 整库备份和仅校验均有可见结果 (404ms)
+  ok 11 tests\browser\member3.spec.ts:75:1 › 同步配置清空密码 并展示冲突路径 (450ms)
+  ok 12 tests\browser\member3.spec.ts:77:1 › PDF 导出可选择并提示浏览器要求 (384ms)
+  ok 13 tests\browser\member3.spec.ts:79:1 › 版本保留可关闭并通过既有设置命令保存 (409ms)
+  ok 14 tests\browser\member3.spec.ts:86:1 › 恢复回退失败时显示原库保留路径与快照路径 (412ms)
+  ok 15 tests\browser\member3.spec.ts:92:1 › 迟到预览不会覆盖较新的编辑文本 (1.3s)
+
+  15 passed (11.9s)
