@@ -28,7 +28,9 @@ impl FsStore {
             if e.kind() == std::io::ErrorKind::NotFound {
                 AppError::new("E_VAULT_NOT_FOUND", "笔记库目录不存在，请先建立文件夹")
             } else {
-                AppError::io(e)
+                let mut error = AppError::io(e);
+                error.message = format!("无法访问所选笔记库文件夹：{}", error.message);
+                error
             }
         })?;
         if !root.is_dir() {
@@ -274,9 +276,23 @@ impl NoteStore for FsStore {
             })
         {
             let entry = entry.map_err(|e| {
-                e.into_io_error()
+                let location = e
+                    .path()
+                    .and_then(|path| path.strip_prefix(&self.root).ok())
+                    .filter(|path| !path.as_os_str().is_empty())
+                    .map(|path| path.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "所选文件夹".to_owned());
+                let mut error = e
+                    .into_io_error()
                     .map(AppError::io)
-                    .unwrap_or_else(|| AppError::new("E_IO_PERMISSION", "无法枚举库目录"))
+                    .unwrap_or_else(|| AppError::new("E_IO_PERMISSION", "无法枚举库目录"));
+                error.message = format!("无法扫描笔记库中的「{location}」：{}", error.message);
+                if error.code == "E_IO_PERMISSION" {
+                    error
+                        .message
+                        .push_str("。请选择有读取权限的专用笔记文件夹，或检查此目录的读取权限");
+                }
+                error
             })?;
             if !entry.file_type().is_file()
                 || !entry

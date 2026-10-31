@@ -1,0 +1,21 @@
+   Compiling notebase-core v0.7.0 (D:\NoteBase\repository\notebase-starter\crates\notebase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 40.46s
+     Running tests\storage.rs (D:/NoteBase/.tools/team-all-core-target\debug\deps\storage-4af2bed705a07469.exe)
+
+running 13 tests
+test new_titles_are_sanitized_without_accepting_empty_input ... ok
+test path_rules_cover_unicode_devices_separators_and_lengths ... ok
+test full_path_limit_is_checked_before_creating_a_file ... ok
+test large_file_read_is_bounded_and_write_is_rejected ... ok
+test failed_rename_and_missing_parent_leave_source_untouched ... ok
+test directories_cannot_be_read_deleted_or_replaced_as_notes ... ok
+test oversized_replacement_does_not_touch_a_small_file ... ok
+test duplicate_creation_and_rename_never_overwrite_existing_content ... ok
+test readonly_file_is_reported_and_replacement_is_refused ... ok
+test windows_sharing_violation_reports_retryable_error_and_cleans_temp ... ok
+test create_stat_rename_and_delete_use_the_same_port ... ok
+test listing_is_scoped_and_only_excludes_special_directories_at_vault_root ... ok
+test windows_junction_cannot_escape_vault ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+

@@ -97,6 +97,32 @@ async function openVault(page: Page, vault: string) {
   await expect(page.locator('#status')).toHaveText('笔记库已打开');
 }
 
+test('真实桌面列出无权限的子目录并可重新选择可读笔记库', async ({ desktopPage: page, vault }) => {
+ const blocked = resolve(vault, '无权限子目录');
+ await mkdir(blocked);
+ await writeFile(resolve(vault, '可读.md'), '权限测试原文');
+ const identity = spawnSync('whoami', [], { encoding: 'utf8', windowsHide: true });
+ expect(identity.status).toBe(0);
+ const account = identity.stdout.trim();
+ try {
+  const denied = spawnSync('icacls', [blocked, '/deny', `${account}:(RD)`], { encoding: 'utf8', windowsHide: true });
+  expect(denied.status, denied.stdout + denied.stderr).toBe(0);
+  await page.getByLabel('笔记库绝对路径').fill(vault);
+  await page.getByRole('button', { name: '按路径打开', exact: true }).click();
+  await expect(page.locator('#status')).toContainText('E_IO_PERMISSION');
+  await expect(page.locator('#status')).toContainText('无权限子目录');
+  await expect(page.locator('#status')).toContainText('读取权限');
+ } finally {
+  // Only alter the ACL on this test's newly created directory; always restore it.
+  const restored = spawnSync('icacls', [blocked, '/remove:d', account], { encoding: 'utf8', windowsHide: true });
+  expect(restored.status, restored.stdout + restored.stderr).toBe(0);
+ }
+ await openVault(page, vault);
+ await page.getByRole('button', { name: '可读.md', exact: true }).click();
+ await expect(page.locator('.cm-content')).toContainText('权限测试原文');
+ expect(await readFile(resolve(vault, '可读.md'), 'utf8')).toBe('权限测试原文');
+});
+
 test('真实桌面读取 BOM 文件 保存并重新打开', async ({ desktopPage: page, vault }) => {
   const target = resolve(vault, '中文.md');
   await writeFile(target, '\ufeff# 标题\r\n原文\r\n', 'utf8');
