@@ -7,6 +7,8 @@ import type { NoteContent, NoteEntry, SaveResult, IndexStatus, DraftEntry, Trash
 import { transportEventName } from './contracts';
 import { version } from '../package.json';
 import './style.css';
+import './member3.css';
+import { mountDataTools } from './member3';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = [
   '<aside><div class="brand"><b>N</b><div>NoteBase<small>本地优先 · Markdown</small></div></div>',
@@ -94,6 +96,7 @@ function sync(s: SessionState) {
   if (s.conflict) { const key = s.path + ':' + s.conflict.diskHash; $('conflictMessage').textContent = s.conflict.message; if (key !== conflictKey) { conflictKey = key; $<HTMLDialogElement>('conflictDialog').showModal(); } }
   else { conflictKey = ''; $<HTMLDialogElement>('conflictDialog').close(); }
   update();
+  window.dispatchEvent(new Event('notebase:editor-change'));
 }
 async function run(fn: () => Promise<void>) {
   if (busy) return; busy = true; update();
@@ -434,4 +437,5 @@ async function pollIndex() {
   }
   window.setTimeout(() => void pollIndex(), 1000);
 }
+mountDataTools({desktop:desktopMode,note:()=>active,body:()=>view.state.doc.toString(),call:vaultCall,flush,read,reload:open,run,status});
 update(); if (!desktopMode) void run(open); void pollIndex();

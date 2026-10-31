@@ -267,6 +267,17 @@ impl Drop for BackgroundIndex {
     }
 }
 impl IndexSession for BackgroundIndex {
+    fn suspend(&mut self) -> Result<()> {
+        self.deactivate();
+        let (dummy, _) = mpsc::sync_channel(1);
+        drop(std::mem::replace(&mut self.refresh, dummy));
+        if let Some(worker) = self.worker.take() {
+            worker
+                .join()
+                .map_err(|_| unavailable("索引线程关闭失败，拒绝恢复"))?;
+        }
+        Ok(())
+    }
     fn rebuild(&self) -> Result<String> {
         let mut state = self
             .state

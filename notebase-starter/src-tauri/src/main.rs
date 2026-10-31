@@ -2,6 +2,13 @@
 use notebase_core::{App, Request, Response};
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager, State};
+static SYNC_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+struct SyncGuard;
+impl Drop for SyncGuard {
+    fn drop(&mut self) {
+        SYNC_ACTIVE.store(false, std::sync::atomic::Ordering::Release);
+    }
+}
 type Shared = Arc<Mutex<App>>;
 async fn dispatch(expected: &str, request: Request, app: Shared) -> Response {
     if request.command != expected {
@@ -12,6 +19,18 @@ async fn dispatch(expected: &str, request: Request, app: Shared) -> Response {
         };
     }
     let id = request.id.clone();
+    let _sync_guard = if expected == "sync_now" {
+        if SYNC_ACTIVE.swap(true, std::sync::atomic::Ordering::AcqRel) {
+            return Response::Err {
+                id,
+                ok: false,
+                error: notebase_core::domain::AppError::new("E_SYNC_BUSY", "同步任务已在执行"),
+            };
+        }
+        Some(SyncGuard)
+    } else {
+        None
+    };
     match tauri::async_runtime::spawn_blocking(move || match app.lock() {
         Ok(mut app) => app.dispatch(request),
         Err(_) => Response::Err {
@@ -94,9 +113,23 @@ fn main() {
             let events = Arc::new(move |name: &str, value: serde_json::Value| {
                 let _ = handle.emit(&notebase_core::domain::transport_event_name(name), value);
             });
-            app.manage(Arc::new(Mutex::new(notebase_core::new_indexed_app(
-                data_root, events,
-            ))));
+            let maintenance_events=events.clone();
+            let shared=Arc::new(Mutex::new(notebase_core::new_indexed_app(data_root, events)));
+            app.manage(shared.clone());
+            // A weak reference avoids keeping the application alive after shell teardown.
+            let weak=Arc::downgrade(&shared);
+            std::thread::spawn(move||loop{
+                std::thread::sleep(std::time::Duration::from_secs(60));
+                let Some(app)=weak.upgrade() else {break};
+                if let Ok(mut guard)=app.try_lock(){
+                    let now=notebase_core::index::now_ms();
+                    if let Err(error)=guard.maintenance(now){maintenance_events("error.raised",serde_json::json!({"code":error.code,"message":error.message,"source":"backup-svc"}));}
+                    if SYNC_ACTIVE.compare_exchange(false,true,std::sync::atomic::Ordering::AcqRel,std::sync::atomic::Ordering::Acquire).is_ok(){
+                        let _lease=SyncGuard;
+                        if let Err(error)=guard.background_sync(now){maintenance_events("error.raised",serde_json::json!({"code":error.code,"message":error.message,"source":"sync-svc"}));}
+                    }
+                };
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

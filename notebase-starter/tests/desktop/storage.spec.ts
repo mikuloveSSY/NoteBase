@@ -49,7 +49,9 @@ const test = base.extend<{ desktopPage: Page; vault: string }>({
       const context = browser.contexts()[0];
       await expect.poll(() => context.pages().length).toBeGreaterThan(0);
       const page = context.pages()[0];
-      await expect(page.locator('#mode')).toContainText('桌面模式');
+      page.on('pageerror', error => { diagnostics += `\n${error.stack ?? error.message}`; });
+      page.on('console', message => { if (message.type() === 'error') diagnostics += `\n${message.text()}`; });
+      await expect(page.locator('#mode')).toContainText('桌面模式', { timeout: 30_000 }).catch(error => { throw new Error(String(error) + diagnostics); });
       await use(page);
       if(!page.isClosed()) await page.screenshot({ path: testInfo.outputPath('desktop.png'), fullPage: true });
     } finally {
@@ -247,4 +249,15 @@ test('成员二真实窗口关闭会先冲刷未保存内容',async({desktopPage
  const closed=page.waitForEvent('close',{timeout:10000});
  await page.evaluate(async()=>{const internal=(window as unknown as {__TAURI_INTERNALS__:{invoke:(name:string,args:unknown)=>Promise<unknown>}}).__TAURI_INTERNALS__;await internal.invoke('plugin:window|close',{label:'main'});}).catch(error=>{if(!/closed|destroyed/i.test(String(error)))throw error;});
  await closed;expect(await readFile(target,'utf8')).toBe('original saved on close');
+});
+
+test('成员三真实IPC导出 快照 备份校验与新位置恢复',async({desktopPage:page,vault},testInfo)=>{
+ const body='# 真实成员三\n备份恢复内容';await writeFile(resolve(vault,'A.md'),body);await openVault(page,vault);
+ const preview=await invokeCore(page,'export_note',{path:'A.md',preview:true,format:'html',body});expect(preview.ok).toBe(true);expect(preview.data.html).toContain('真实成员三');
+ const html=testInfo.outputPath('export.html');const exported=await invokeCore(page,'export_note',{path:'A.md',format:'html',targetPath:html});expect(exported.ok).toBe(true);expect(await readFile(html,'utf8')).toContain('真实成员三');
+ const snapshot=await invokeCore(page,'backup_create',{scope:'note',path:'A.md'});expect(snapshot.ok).toBe(true);
+ const versions=await invokeCore(page,'note_list',{scope:'versions',path:'A.md'});expect(versions.ok).toBe(true);expect(versions.data.items.length).toBeGreaterThan(0);
+ const backup=await invokeCore(page,'backup_create',{});expect(backup.ok).toBe(true);
+ const verified=await invokeCore(page,'backup_restore',{filePath:backup.data.filePath,verifyOnly:true});expect(verified.ok).toBe(true);expect(verified.data.verified).toBe(true);
+ const target=testInfo.outputPath('restored');const restored=await invokeCore(page,'backup_restore',{filePath:backup.data.filePath,mode:'new',targetPath:target});expect(restored.ok).toBe(true);expect(await readFile(resolve(target,'A.md'),'utf8')).toBe(body);expect(await readFile(resolve(vault,'A.md'),'utf8')).toBe(body);
 });

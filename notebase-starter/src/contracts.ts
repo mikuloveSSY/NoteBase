@@ -19,6 +19,10 @@ export interface LinkResolution {targetPath?:string|null;candidates:string[];amb
 export interface GraphData {nodes:({path:string;id?:string;title?:string}|string)[];edges:{from:string;to:string}[]}
 export interface AttachmentResult {attachmentPath:string;relativePath:string;markdown:string}
 export interface SaveResult {path:string;contentHash:string;mtimeMs:number;bytesWritten:number;snapshotCreated:boolean;indexQueued:boolean;warnings:string[]}
+export interface RenderedNote {html:string;missingAssets:string[];warnings:Record<string,unknown>[]}
+export interface ExportResult {filePath:string;missingAssets?:string[];warnings?:Record<string,unknown>[]}
+export interface VersionEntry {path:string;versionId:string;contentHash:string;createdMs:number;sizeBytes:number;description:string}
+export interface BackupResult {filePath:string;bytes:number;checksum:string;noteCount:number;attachmentCount:number}
 export interface SearchQuery {query:string;filters?:{tags?:string[];pathPrefix?:string;mtimeFromMs?:number|null;mtimeToMs?:number|null;createdFromMs?:number|null;createdToMs?:number|null;hasAttachment?:boolean|null};sort?:'relevance'|'mtime';limit?:number;cursor?:string|null}
 export interface SearchHit {path:string;title:string;snippet:string;score:number;matchedIn:string;mtimeMs:number}
 export interface SearchPage {items:SearchHit[];nextCursor:string|null;totalApprox:number;tookMs:number;degraded:boolean;degradeReason:string|null}
