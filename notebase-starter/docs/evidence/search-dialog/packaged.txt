@@ -1,0 +1,13 @@
+
+> notebase-starter@0.7.0 test:desktop
+> playwright test --config playwright.desktop.config.ts --grep 搜索中文|外部文件变化
+
+
+Running 2 tests using 1 worker
+
+(node:39896) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 1 tests\desktop\storage.spec.ts:86:1 › 真实桌面搜索中文并打开命中笔记 (3.8s)
+  ok 2 tests\desktop\storage.spec.ts:251:1 › 真实桌面外部文件变化自动进入搜索和文件列表 (3.9s)
+
+  2 passed (8.2s)
