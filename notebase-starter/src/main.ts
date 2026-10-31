@@ -12,10 +12,11 @@ import './style.css';
 import './shell.css';
 import './member3.css';
 import { mountDataTools } from './member3';
+import { chooseVaultFolder } from './vault-dialog';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = [
   '<aside><div class="brand"><b>N</b><div>NoteBase<small>本地优先 · Markdown</small></div></div>',
-  '<label class="field">笔记库目录<input id="vaultPath" placeholder="例如 D:\\Notes" aria-label="笔记库绝对路径"></label><button id="open">打开已有文件夹</button>',
+  '<button id="open" class="primary">选择笔记库文件夹…</button><label class="field">笔记库路径（也可手动输入）<input id="vaultPath" placeholder="选择文件夹后自动填入" aria-label="笔记库绝对路径"></label><button id="openPath">按路径打开</button>',
   '<label class="field">搜索笔记<input id="searchQuery" aria-label="搜索笔记" placeholder="关键词、title:标题、tag:标签"></label><div class="compact-actions"><button id="searchButton">搜索</button><button id="rebuild">后台重建索引</button></div><details><summary>搜索筛选</summary><label class="field">路径前缀<input id="searchPath"></label><label class="field">标签<input id="searchTag"></label><label class="field">排序<select id="searchSort"><option value="relevance">相关性</option><option value="mtime">最近修改</option></select></label></details><div id="searchInfo" role="status" aria-live="polite"></div><nav id="searchResults" aria-label="搜索结果"></nav><button id="searchMore" hidden>更多搜索结果</button><button id="migrate">迁移笔记库目录</button><p id="indexWarning" role="alert" hidden></p>',
   '<div class="section-title">笔记 <button id="new" aria-label="新建笔记">＋ 新建</button></div>',
   '<details class="new-options"><summary>新建目录与模板</summary><label class="field">目录<input id="newDir" placeholder="留空为根目录"></label><label class="field">模板<select id="template"><option value="">空白笔记</option></select></label><small id="templateStatus"></small></details>',
@@ -74,6 +75,7 @@ function update() {
   $<HTMLButtonElement>('save').disabled = !active || !s.dirty || s.saving || s.paused || active.readOnly || switching;
   for (const id of ['new', 'more', 'refresh']) $<HTMLButtonElement>(id).disabled = !opened || busy;
   $<HTMLButtonElement>('open').disabled = busy || !bootReady;
+  $<HTMLButtonElement>('openPath').disabled = busy || !bootReady || !desktopMode;
   $<HTMLInputElement>('vaultPath').disabled = busy || !desktopMode || !bootReady;
   for (const id of ['rebuild', 'migrate', 'searchButton', 'searchMore']) $<HTMLButtonElement>(id).disabled = busy || !opened || !desktopMode;
   $<HTMLInputElement>('searchQuery').disabled = !opened || busy || !desktopMode;
@@ -176,9 +178,10 @@ async function releaseVault() {
   if (!await flush() || !await session.close()) return false;
   persistWorkspace(); vaultIdentity = ''; resetVaultView(); return true;
 }
-async function open() {
+async function open(path = $<HTMLInputElement>('vaultPath').value) {
   if (!await releaseVault()) return;
-  await call('vault_open', { path: $<HTMLInputElement>('vaultPath').value });
+  $<HTMLInputElement>('vaultPath').value = path;
+  await call('vault_open', { path });
   opened = true;
   if (desktopMode) { const info = await vaultCall<{ vaultPath: string }>('vault_info'); $<HTMLInputElement>('vaultPath').value = info.vaultPath; }
   vaultIdentity = desktopMode ? $<HTMLInputElement>('vaultPath').value : 'demo';
@@ -191,6 +194,11 @@ async function open() {
     if (restored.active) { try { await read(restored.active); } catch { tabs.delete(restored.active); } }
   } finally { restoringWorkspace = false; renderTabs(); }
   status('笔记库已打开'); window.dispatchEvent(new Event('notebase:vault-opened')); void loadRecovery(); void loadTemplates();
+}
+async function chooseAndOpenVault() {
+  if (!desktopMode) { await open(); return; }
+  const path = await chooseVaultFolder($<HTMLInputElement>('vaultPath').value);
+  if (path !== null) await open(path);
 }
 async function migrate() {
   const target = prompt('迁移到新的绝对目录（目标必须不存在）。校验后切换，原目录会完整保留。');
@@ -355,7 +363,8 @@ function renderGraph() {
   target.append(svg); for (const n of nodes) target.append(button('图谱 ' + n.path, () => void run(() => read(n.path))));
 }
 $('mode').textContent = desktopMode ? '桌面模式：写入所选文件夹中的真实 .md 文件。已接入自动保存与恢复草稿。' : '浏览器演示：仅使用内存数据，刷新即重置，不读写本地磁盘。';
-$('open').addEventListener('click', () => void run(open)); $('save').addEventListener('click', () => void save());
+$('open').addEventListener('click', () => void run(chooseAndOpenVault)); $('openPath').addEventListener('click', () => void run(open)); $('save').addEventListener('click', () => void save());
+if (!desktopMode) $('open').textContent = '打开演示库';
 $('more').addEventListener('click', () => void run(() => list(false)));
 $('refresh').addEventListener('click', () => void run(async () => { await list(); void loadRecovery(); status('文件列表已刷新，笔记内容由外部检查独立核对'); }));
 $('favoriteFilter').addEventListener('change', () => void run(() => list())); $('groupTree').addEventListener('change', renderNotes);

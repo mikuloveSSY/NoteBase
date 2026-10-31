@@ -149,6 +149,7 @@ command!(settings_get);
 command!(settings_set);
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // Tauri creates its default WebView directory before the WebView2 env
             // override takes effect. Apply the explicit profile at construction.

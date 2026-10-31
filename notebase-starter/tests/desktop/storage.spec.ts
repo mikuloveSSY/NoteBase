@@ -72,6 +72,14 @@ const test = base.extend<{ desktopPage: Page; vault: string }>({
 
 test.skip(process.platform !== 'win32', '真实桌面测试使用 Windows WebView2');
 
+test('真实桌面已注册原生文件夹选择插件且具有打开权限',async({desktopPage:page})=>{
+ await expect(page.getByRole('button',{name:'选择笔记库文件夹…',exact:true})).toBeEnabled();
+ // Fail option decoding before displaying a modal. This verifies real plugin/ACL
+ // wiring without pretending to automate the Windows dialog itself.
+ const error=await page.evaluate(async()=>{const internal=(window as unknown as {__TAURI_INTERNALS__:{invoke:(name:string,args:unknown)=>Promise<unknown>}}).__TAURI_INTERNALS__;try{await internal.invoke('plugin:dialog|open',{options:{directory:'invalid'}});return 'unexpected success';}catch(error){return String(error);}});
+ expect(error).toMatch(/invalid type.*expected.*boolean/i);
+});
+
 test('真实桌面搜索中文并打开命中笔记',async({desktopPage:page,vault})=>{
  await writeFile(resolve(vault,'搜索.md'),'# 数据结构\n跨词边界的动态规划内容');await openVault(page,vault);
  await expect(page.locator('#indexStatus')).toContainText('索引已就绪');
@@ -83,7 +91,7 @@ test('真实桌面搜索中文并打开命中笔记',async({desktopPage:page,vau
 
 async function openVault(page: Page, vault: string) {
   await page.getByLabel('笔记库绝对路径').fill(vault);
-  await page.getByRole('button', { name: '打开已有文件夹' }).click();
+  await page.getByRole('button', { name: '按路径打开', exact: true }).click();
   await expect(page.locator('#status')).toHaveText('笔记库已打开');
 }
 

@@ -6,6 +6,7 @@
     "note-*"
   ],
   "permissions": [
+    "dialog:allow-open",
     "core:default",
     "core:window:allow-close",
     "core:window:allow-destroy",
