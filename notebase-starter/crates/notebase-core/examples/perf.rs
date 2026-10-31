@@ -251,7 +251,7 @@ fn main() {
     let args: Vec<_> = std::env::args().collect();
     assert!(
         args.len() >= 5,
-        "perf <generate|build|rebuild|query|watch|concurrent|accept> <absolute-root> <count> <repetitions>"
+        "perf <generate|build|rebuild|query|watch|concurrent|accept|steady> <absolute-root> <count> <repetitions>"
     );
     let mode = &args[1];
     assert!([
@@ -261,7 +261,8 @@ fn main() {
         "query",
         "watch",
         "concurrent",
-        "accept"
+        "accept",
+        "steady"
     ]
     .contains(&mode.as_str()));
     let root = PathBuf::from(&args[2]);
@@ -307,7 +308,7 @@ fn main() {
     let ready_times = Arc::new(Mutex::new(Vec::<u128>::new()));
     let sink_times = ready_times.clone();
     let failure_path = root.join("failure.json");
-    let native_watch = mode == "watch" || mode == "accept";
+    let native_watch = mode == "watch" || mode == "accept" || mode == "steady";
     let events = Arc::new(move |name: &str, payload: Value| {
         if name == "index.state" && payload["state"] == "ready" {
             sink_times
@@ -355,18 +356,18 @@ fn main() {
         wait_ready(&worker, &fatal, &ready, 1);
     }
     let startup_ms = started.elapsed().as_millis();
-    if mode == "query" || mode == "accept" {
+    if mode == "query" || mode == "accept" || mode == "steady" {
         run_queries(&worker, &root, count, repetitions, startup_ms);
     }
-    if mode == "watch" || mode == "accept" {
+    if mode == "watch" || mode == "accept" || mode == "steady" {
         run_watch(&worker, &root, count, repetitions, &fatal);
     }
-    if mode == "concurrent" || mode == "accept" {
+    if mode == "concurrent" || mode == "accept" || mode == "steady" {
         run_concurrent(
             &worker,
             &root,
             count,
-            if mode == "accept" {
+            if mode == "accept" || mode == "steady" {
                 repetitions.div_ceil(4)
             } else {
                 repetitions
@@ -405,10 +406,10 @@ fn main() {
         .unwrap();
         println!("{result}");
     }
-    if mode == "accept" {
+    if mode == "accept" || mode == "steady" {
         let result = json!({"notes":count,"openedExistingIndex":existed,"firstReadyMs":first_ready_ms,"startupSettledMs":startup_ms,"indexBytesLive":live_bytes,"dataBytesAfterClose":size(&data),"corpusBytes":size(&vault)});
         fs::write(
-            root.join("accept.json"),
+            root.join(format!("{mode}.json")),
             serde_json::to_vec_pretty(&result).unwrap(),
         )
         .unwrap();

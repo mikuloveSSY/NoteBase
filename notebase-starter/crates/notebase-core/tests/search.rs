@@ -246,3 +246,30 @@ fn optimized_title_candidates_keep_literal_unicode_and_ascii_case_semantics() {
         assert_eq!(found, title_matches == 1, "{term}");
     }
 }
+
+#[test]
+fn vectorized_body_prefilter_keeps_literal_like_results() {
+    let (_dir, store) = fixture();
+    let mut note = store
+        .get(&RelPath::new("课/B.md").unwrap())
+        .unwrap()
+        .unwrap();
+    note.title = "empty".into();
+    note.aliases.clear();
+    note.tags.clear();
+    note.body = "甲乙 🙂中 100% a_b \\ 123".into();
+    note.size_bytes = note.body.len() as u64;
+    store.upsert_batch(&[note]).unwrap();
+    for text in ["甲乙", "🙂中", "%", "_", "\\", "12", "无", "甲"] {
+        let pattern = format!(
+            "%{}%",
+            text.replace('\\', "\\\\")
+                .replace('%', "\\%")
+                .replace('_', "\\_")
+        );
+        let expected:Vec<String>=store.read(|c|{let mut stmt=c.prepare("SELECT n.path FROM notes n JOIN note_fts_content f ON n.rowid=f.id WHERE f.c2 LIKE ?1 ESCAPE '\\' ORDER BY n.path")?;let rows=stmt.query_map([pattern],|r|r.get(0))?;rows.collect()}).unwrap();
+        let mut actual = paths(&store.search(&json!({"query":text})).unwrap());
+        actual.sort();
+        assert_eq!(actual, expected, "{text}");
+    }
+}

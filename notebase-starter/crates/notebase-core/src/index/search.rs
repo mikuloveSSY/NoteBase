@@ -188,8 +188,33 @@ pub fn search_path(path: &Path, query: &Value) -> Result<Value> {
         .map_err(|e| super::unavailable(e.to_string()))?;
     search(&conn, query)
 }
+// 每个连接注册无 I/O 的字节候选过滤；SQLite 按绑定参数缓存搜索器，正文不复制。
+fn register_contains(connection: &Connection) -> rusqlite::Result<()> {
+    use rusqlite::{
+        functions::FunctionFlags,
+        types::{FromSqlError, ValueRef},
+    };
+    connection.create_scalar_function(
+        "notebase_contains",
+        2,
+        FunctionFlags::SQLITE_UTF8
+            | FunctionFlags::SQLITE_DETERMINISTIC
+            | FunctionFlags::SQLITE_INNOCUOUS,
+        |ctx| {
+            let finder: std::sync::Arc<memchr::memmem::Finder<'static>> =
+                ctx.get_or_create_aux(1, |value| -> std::result::Result<_, FromSqlError> {
+                    Ok(memchr::memmem::Finder::new(value.as_str()?.as_bytes()).into_owned())
+                })?;
+            Ok(match ctx.get_raw(0) {
+                ValueRef::Text(body) | ValueRef::Blob(body) => finder.find(body).is_some(),
+                _ => true,
+            })
+        },
+    )
+}
 pub fn search(connection: &Connection, payload: &Value) -> Result<Value> {
     let started = Instant::now();
+    register_contains(connection).map_err(|e| super::unavailable(e.to_string()))?;
     let mut q: SearchQuery =
         serde_json::from_value(payload.clone()).map_err(|e| syntax(&e.to_string()))?;
     if !(1..=200).contains(&q.limit) {
@@ -298,7 +323,7 @@ pub fn search(connection: &Connection, payload: &Value) -> Result<Value> {
                     // 无 ASCII 字母时，字节子串是必要条件；最终仍以转义 LIKE 判定。
                     let prefilter = if !term.text.chars().any(|c| c.is_ascii_alphabetic()) {
                         let literal = bind(&mut values, term.text.clone());
-                        format!("instr(c2,{literal})>0 AND ")
+                        format!("notebase_contains(c2,{literal}) AND ")
                     } else {
                         String::new()
                     };

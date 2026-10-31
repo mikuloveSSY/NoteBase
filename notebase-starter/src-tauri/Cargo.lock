@@ -2023,6 +2023,7 @@ dependencies = [
  "chrono",
  "comrak",
  "fs2",
+ "memchr",
  "notify",
  "rusqlite",
  "serde",
