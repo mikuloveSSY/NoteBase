@@ -1,0 +1,52 @@
+[
+  {
+    "name": "NoteBase-0.7.0-1b8a7642-windows-x64-setup.exe",
+    "bytes": 5378002,
+    "sha256": "5d418c97b428123b3857058031e0fafde47445b2b4dbd47e4378bcc9135088a4"
+  },
+  {
+    "name": "NoteBase-0.7.0-1b8a7642-windows-x64-setup.exe.sha256",
+    "bytes": 113,
+    "sha256": "cad586fca8c2e984be0ed5b51a363e7237958682684438c655851032b3559807"
+  },
+  {
+    "name": "NoteBase-0.7.0-8584ed2b-windows-x64-setup.exe",
+    "bytes": 5297510,
+    "sha256": "29424976fa6342076f23fdc3246c8df270dd3ace89bec2c1662af13a3ade57c6"
+  },
+  {
+    "name": "NoteBase-0.7.0-8584ed2b-windows-x64-setup.exe.sha256",
+    "bytes": 113,
+    "sha256": "1f9240db70d73d15ad02f177f7fd468f02b0197194fdac561c84af87dc28eb18"
+  },
+  {
+    "name": "NoteBase-0.7.0-a7e23c53-windows-x64-setup.exe",
+    "bytes": 5375666,
+    "sha256": "82353f3429a9da315c94047a95f94ebbb3c0faac76c5f9c89d19cf8379f4a1d1"
+  },
+  {
+    "name": "NoteBase-0.7.0-a7e23c53-windows-x64-setup.exe.sha256",
+    "bytes": 113,
+    "sha256": "5cb8b5f28616698b477ca079147a125077338b18d88d0cc22f54da9161bcfba5"
+  },
+  {
+    "name": "NoteBase-0.7.0-c37b869b-windows-x64-setup.exe",
+    "bytes": 5294207,
+    "sha256": "b1084afc85b213843fb54d888ea69f3f264332c84d6879ad3ac43d85eb5e7f8f"
+  },
+  {
+    "name": "NoteBase-0.7.0-c37b869b-windows-x64-setup.exe.sha256",
+    "bytes": 113,
+    "sha256": "1e88954193c9db138aaf066fef1f7457dbe7daeb1afe3b81aa7bae23f3ea6948"
+  },
+  {
+    "name": "NoteBase-0.7.0-d3d0061f-windows-x64-setup.exe",
+    "bytes": 5374269,
+    "sha256": "91c45804d527630bb482324d87820e377377309c280239b9fd0278fbc0ee3dc9"
+  },
+  {
+    "name": "NoteBase-0.7.0-d3d0061f-windows-x64-setup.exe.sha256",
+    "bytes": 113,
+    "sha256": "6b25e3b844e9f97b2feee91bd79a25a3f93fa3c32dd0307a4ba86643e09d4472"
+  }
+]

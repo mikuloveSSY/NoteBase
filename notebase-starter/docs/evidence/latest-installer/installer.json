@@ -1,0 +1,21 @@
+{
+  "sourceRevision": "901624d71630fefa386fb71d18e19ca86ff8f56d",
+  "documentationHeadAtPackaging": "9793badaaad59dade66c66991ff6bdc49261563b",
+  "version": "0.7.0",
+  "installer": "D:\\NoteBase\\delivery\\NoteBase-0.7.0-901624d7-windows-x64-setup.exe",
+  "installerBytes": 5377349,
+  "installerSha256": "aac6877614187a467c577c4884256c20034bee97f71417a3d1911aa1c024e356",
+  "extractedPayloadSha256": "c942e80ddd3235fa3c009b1a0da73a8568509f7ad3d5c35c5cc9f900e052c582",
+  "payloadMatchesTestedPortable": true,
+  "archiveTestPassed": true,
+  "installMode": "currentUser",
+  "architecture": "windows-x64",
+  "webviewInstallMode": "downloadBootstrapper",
+  "installerGenerated": true,
+  "cleanMachineInstallationTested": false,
+  "oldInstallerCountRemoved": 5,
+  "oldChecksumCountRemoved": 5,
+  "remainingInstallers": [
+    "NoteBase-0.7.0-901624d7-windows-x64-setup.exe"
+  ]
+}
