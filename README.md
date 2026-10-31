@@ -6,6 +6,7 @@
 
 - [版本说明](CHANGELOG.md)
 - [成员一开发计划](docs/成员一开发计划.md)
+- [四人研发整合计划](docs/四人研发整合计划.md)
 - [存储接口交接](notebase-starter/docs/存储初版交接.md)
 - [索引基础交接](notebase-starter/docs/索引基础交接.md)
 - [本版验证记录](notebase-starter/docs/重建迁移交接-v0.6.0.md)
