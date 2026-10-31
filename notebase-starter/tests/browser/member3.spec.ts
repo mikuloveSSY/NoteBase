@@ -31,7 +31,7 @@ test('PDF 导出可选择并提示浏览器要求',async({page})=>{await dataBri
 test('版本保留可关闭并通过既有设置命令保存',async({page})=>{
  await dataBridge(page);await page.locator('#versionRetentionDays').fill('0');await page.locator('#backupSettings').click();
  await expect(page.locator('#backupResult')).toContainText('版本历史已关闭');
- await expect(page.locator('#versions')).toContainText('暂无版本');
+ await expect(page.locator('#versions')).toContainText('版本历史已关闭');
  const calls=await page.evaluate(()=>(window as any).__dataCalls);expect(calls.findLast((c:any)=>c.command==='settings_set').p.values.backup.versionRetentionDays).toBe(0);
 });
 

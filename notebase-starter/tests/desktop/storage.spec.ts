@@ -314,7 +314,7 @@ test('真实exe重命名保留历史且旧路径新建不串版本',async({deskt
 test('真实exe版本保留设置可关闭且保存结果不伪报快照',async({desktopPage:page,vault})=>{
  await writeFile(resolve(vault,'A.md'),'before');await openVault(page,vault);await page.getByRole('button',{name:'A.md',exact:true}).click();
  await page.locator('#versionRetentionDays').fill('0');await page.locator('#backupSettings').click();await expect(page.locator('#backupResult')).toContainText('版本历史已关闭');
- await expect(page.locator('#versions')).toContainText('暂无版本');
+ await expect(page.locator('#versions')).toContainText('版本历史已关闭');
  const config=await invokeCore(page,'settings_get',{keys:['backup']});expect(config.data.values.backup.versionRetentionDays).toBe(0);
  const note=await invokeCore(page,'note_read',{path:'A.md'});const saved=await invokeCore(page,'note_save',{path:'A.md',baseHash:note.data.contentHash,body:'saved without snapshot'});expect(saved.ok).toBe(true);expect(saved.data.snapshotCreated).toBe(false);expect(await readFile(resolve(vault,'A.md'),'utf8')).toBe('saved without snapshot');
  await page.locator('#versionRetentionDays').fill('5');await page.locator('#backupSettings').click();await expect(page.locator('#backupResult')).toContainText('版本保留 5 天');
