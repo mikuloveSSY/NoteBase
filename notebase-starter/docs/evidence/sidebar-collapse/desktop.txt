@@ -1,0 +1,13 @@
+
+> notebase-starter@0.7.0 test:desktop
+> playwright test --config playwright.desktop.config.ts --grep 搜索中文|读取 BOM
+
+
+Running 2 tests using 1 worker
+
+(node:37488) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 1 tests\desktop\storage.spec.ts:85:1 › 真实桌面搜索中文并打开命中笔记 (6.3s)
+  ok 2 tests\desktop\storage.spec.ts:144:1 › 真实桌面读取 BOM 文件 保存并重新打开 (4.3s)
+
+  2 passed (11.4s)
