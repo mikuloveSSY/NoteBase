@@ -16,7 +16,7 @@ async function dataBridge(page:Page){
  if(command==='note_restore'){body='# 历史内容';hash='old';return {path:'A.md',contentHash:hash,mtimeMs:1,warnings:[]};}
  if(command==='index_status')return {state:'ready',noteCount:1};
  if(command==='link_backlinks'||command==='link_mentions')return {items:[]};
- if(command==='export_note'){if(p.preview){if(window.__previewDelay)await new Promise(r=>window.__releasePreview=r);return {html:'<!doctype html><h1>'+p.body.replaceAll('<','&lt;')+'</h1>',missingAssets:[],warnings:[]};}return {filePath:p.targetPath,missingAssets:['missing.png'],warnings:[{kind:'unresolved_link',target:'Missing'}]};}
+ if(command==='export_note'){if(p.preview){if(window.__previewDelay)await new Promise(r=>window.__releasePreview=r);if(window.__previewError)throw {message:'渲染服务暂不可用'};return {html:'<!doctype html><h1>'+p.body.replaceAll('<','&lt;')+'</h1>',missingAssets:window.__previewMissing??[],warnings:[]};}return {filePath:p.targetPath,missingAssets:['missing.png'],warnings:[{kind:'unresolved_link',target:'Missing'}]};}
  if(command==='backup_create')return {filePath:'/fixture/backup.zip',bytes:100,checksum:'fixture'};
  if(command==='backup_restore'){if(window.__restoreFailure&&!p.verifyOnly)throw {code:'E_IO_PERMISSION',message:'恢复发布失败',detail:{retainedOriginalDir:'/fixture/retained-vault',snapshotPath:'/fixture/before.zip'}};return p.verifyOnly?{verified:true,noteCount:1}:{restoredTo:p.targetPath,snapshotPath:'/fixture/before.zip'};}
  if(command==='sync_configure')return {ok:true};if(command==='sync_now')return {completed:true,conflicts:['A.md']};if(command==='sync_status')return {state:'conflict',conflicts:['A.md']};
@@ -44,6 +44,31 @@ test('选择器报错时保留当前库并允许按路径打开',async({page})=>
  await expect(page.locator('#openPath')).toBeEnabled();await page.locator('#openPath').click();await expect(page.locator('#status')).toHaveText('笔记库已打开');
 });
 test('隔离的预览消费当前未保存文本',async({page})=>{await dataBridge(page);await page.locator('#previewToggle').click();await expect(page.frameLocator('#markdownPreview').locator('h1')).toContainText('当前内容');await expect(page.locator('#markdownPreview')).toHaveAttribute('sandbox','');const editor=page.locator('.cm-content');await editor.click();await page.keyboard.press('Control+End');await page.keyboard.type(' unsaved');await expect(page.frameLocator('#markdownPreview').locator('h1')).toContainText('unsaved');});
+test('默认分栏且三种视图切换保留编辑内容并记住选择',async({page})=>{
+ await dataBridge(page);await expect(page.locator('#previewToggle')).toHaveAttribute('aria-pressed','true');
+ await expect(page.locator('#editor')).toBeVisible();await expect(page.frameLocator('#markdownPreview').locator('h1')).toContainText('当前内容');
+ await page.locator('.cm-content').click();await page.keyboard.press('Control+End');await page.keyboard.insertText(' 保留的编辑');
+ await page.locator('#previewRead').click();await expect(page.locator('#editor')).toBeHidden();await expect(page.frameLocator('#markdownPreview').locator('h1')).toContainText('保留的编辑');
+ await page.locator('#previewEdit').click();await expect(page.locator('#markdownPreview')).toBeHidden();await expect(page.locator('.cm-content')).toContainText('保留的编辑');
+ await page.reload();await expect(page.locator('#previewEdit')).toHaveAttribute('aria-pressed','true');await expect(page.locator('#editor')).toBeVisible();
+});
+test('预览失败可继续编辑并在内容更新后重试，缺失图片有明确提示',async({page})=>{
+ await dataBridge(page);await expect(page.frameLocator('#markdownPreview').locator('h1')).toContainText('当前内容');
+ await page.evaluate(()=>{(window as any).__previewError=true;});await page.locator('.cm-content').click();await page.keyboard.press('Control+End');await page.keyboard.insertText(' failed');
+ await expect(page.locator('#previewStatus')).toContainText('渲染服务暂不可用');await expect(page.locator('#markdownPreview')).toBeHidden();await expect(page.locator('.cm-content')).toContainText('failed');
+ await page.evaluate(()=>{(window as any).__previewError=false;(window as any).__previewMissing=['attachments/缺失.png'];});await page.keyboard.insertText(' recovered');
+ await expect(page.frameLocator('#markdownPreview').locator('h1')).toContainText('recovered');await expect(page.locator('#previewStatus')).toContainText('attachments/缺失.png');
+ await page.evaluate(()=>{(window as any).__previewMissing=[];});await page.locator('#previewToggle').click();await expect(page.locator('#previewStatus')).toHaveText('Markdown 预览 · A.md');
+});
+test('切换笔记库清除旧预览，窄窗口上下排列且专注布局保留视图入口',async({page})=>{
+ await page.setViewportSize({width:980,height:850});await dataBridge(page);await expect(page.locator('#markdownPreview')).toBeVisible();
+ const editor=await page.locator('#editor').boundingBox(),pane=await page.locator('.preview-pane').boundingBox();expect(pane!.y).toBeGreaterThan(editor!.y);expect(Math.abs(pane!.width-editor!.width)).toBeLessThan(2);
+ // This bridge fixture has no native shell. Exercise its focus-layout state;
+ // the real desktop test below verifies the actual focus button integration.
+ await page.evaluate(()=>document.documentElement.classList.add('focus-mode'));await page.locator('#previewRead').click();await expect(page.locator('#previewEdit')).toBeVisible();await expect(page.locator('#editor')).toBeHidden();
+ await page.evaluate(()=>{document.documentElement.classList.remove('focus-mode');(window as any).__folderChoice='/fixture/另一笔记库';});await page.locator('#open').click();
+ await expect(page.locator('#status')).toHaveText('笔记库已打开');await expect(page.locator('#markdownPreview')).toBeHidden();await expect(page.locator('#previewStatus')).toContainText('打开一篇');
+});
 test('导出展示缺失资源和链接警告',async({page})=>{await dataBridge(page);await page.locator('#exportTarget').fill('/fixture/out.html');await page.locator('#exportRun').click();await expect(page.locator('#exportResult')).toContainText('missing.png');await expect(page.locator('#exportResult')).toContainText('unresolved_link');});
 test('版本可对比并在明确确认后回滚',async({page})=>{await dataBridge(page);await page.locator('#versionsRefresh').click();await page.locator('#versions').getByRole('button',{name:'对比'}).click();await expect(page.locator('#versionOld')).toHaveValue('# 历史内容');await expect(page.locator('#versionCurrent')).toHaveValue('# 当前内容');await page.locator('#compareClose').click();page.once('dialog',d=>d.accept());await page.locator('#versions').getByRole('button',{name:'回滚'}).click();await expect(page.locator('.cm-content')).toContainText('历史内容');});
 test('整库备份和仅校验均有可见结果',async({page})=>{await dataBridge(page);page.once('dialog',d=>d.accept('保存节点'));await page.locator('#backupRun').click();await expect(page.locator('#restoreFile')).toHaveValue('/fixture/backup.zip');await page.locator('#verifyBackup').click();await expect(page.locator('#backupResult')).toContainText('校验通过');});

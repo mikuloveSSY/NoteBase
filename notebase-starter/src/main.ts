@@ -36,7 +36,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = [
   '<details open><summary>启动草稿恢复</summary><p class="muted">恢复时若磁盘已变化，将保留为副本。</p><button id="draftsRefresh">刷新草稿</button><div id="drafts" class="panel-list">尚未打开库</div></details>',
   '<details><summary>回收站</summary><button id="trashRefresh">刷新回收站</button><div id="trash" class="panel-list"></div></details>',
   '<details><summary>未完成重命名</summary><button id="renamesRefresh">刷新任务</button><div id="renames" class="panel-list"></div></details>',
-  '<p class="muted">笔记以 Markdown 文件保存在本地；预览、导出、版本历史和备份可在上方面板使用。</p></aside>',
+  '<p class="muted">笔记以 Markdown 文件保存在本地；编辑区顶部可切换编辑、分栏预览与阅读，导出、版本历史和备份在上方面板使用。</p></aside>',
   '<dialog id="conflictDialog" aria-labelledby="conflictTitle"><h2 id="conflictTitle">外部修改冲突</h2><p id="conflictMessage"></p><p>自动保存已暂停。本地文本保留，请明确选择一种处理方式。</p><div class="dialog-actions"><button data-choice="local">保留本地并覆盖</button><button data-choice="disk">使用磁盘内容</button><button data-choice="copy">另存冲突副本</button></div><button id="conflictLater">稍后处理（保持暂停）</button></dialog>',
   '<dialog id="renameDialog" aria-labelledby="renameTitle"><h2 id="renameTitle">确认重命名与链接更新</h2><div id="renameDetails"></div><div class="dialog-actions"><button id="renameConfirm" class="primary">确认执行</button><button id="renameCancel">取消</button></div></dialog>',
   '<dialog id="targetDialog" aria-labelledby="targetTitle"><h2 id="targetTitle">选择链接目标</h2><div id="targetCandidates"></div><button id="targetClose">关闭</button></dialog>',

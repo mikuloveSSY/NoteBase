@@ -1,0 +1,13 @@
+
+> notebase-starter@0.7.0 test
+> vitest run src
+
+
+ RUN  v5.0.5 D:/NoteBase/repository/notebase-starter
+
+
+ Test Files  3 passed (3)
+      Tests  22 passed (22)
+   Start at  05:31:50
+   Duration  377ms (import 39%, transform 33%, tests 14%, worker 13%)
+

@@ -91,6 +91,21 @@ test('真实桌面搜索中文并打开命中笔记',async({desktopPage:page,vau
  await page.getByLabel('搜索笔记',{exact:true}).fill('不存在');await page.getByRole('button',{name:'搜索',exact:true}).click();await expect(page.locator('#searchInfo')).toContainText('0 条结果');
 });
 
+test('真实桌面默认Markdown预览支持表格代码任务图片且实时更新',async({desktopPage:page,vault})=>{
+ await mkdir(resolve(vault,'attachments'));
+ await writeFile(resolve(vault,'attachments','pixel.png'),Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64'));
+ await writeFile(resolve(vault,'预览.md'),'# Markdown 预览\n\n| 项目 | 状态 |\n| --- | --- |\n| 预览 | 可用 |\n\n- [x] 完成任务\n\n> 引用内容\n\n```js\nconst answer = 42;\n```\n\n![本地图片](attachments/pixel.png)\n');
+ await openVault(page,vault);await page.getByRole('button',{name:'预览.md',exact:true}).click();
+ const frame=page.frameLocator('#markdownPreview');
+ await expect(page.locator('#previewToggle')).toHaveAttribute('aria-pressed','true');await expect(frame.locator('h1')).toHaveText('Markdown 预览');
+ await expect(frame.locator('table')).toContainText('可用');await expect(frame.locator('pre code')).toContainText('const answer = 42;');await expect(frame.locator('blockquote')).toContainText('引用内容');
+ await expect(frame.locator('input[type=checkbox]')).toBeChecked();await expect(frame.locator('img')).toHaveAttribute('src',/^data:image\/png;base64,/);await expect(page.locator('#markdownPreview')).toHaveAttribute('sandbox','');
+ await page.locator('.cm-content').click();await page.keyboard.press('Control+End');await page.keyboard.insertText('\n\n## 即时更新');await expect(frame.locator('h2')).toHaveText('即时更新');
+ await page.locator('#focus').click();await page.locator('#previewRead').click();await expect(page.locator('#editor')).toBeHidden();await expect(frame.locator('h2')).toHaveText('即时更新');await expect(page.locator('#previewEdit')).toBeVisible();await page.locator('#focus').click();
+ await page.locator('#previewEdit').click();await expect(page.locator('#markdownPreview')).toBeHidden();await expect(page.locator('.cm-content')).toContainText('即时更新');
+ await page.locator('#previewToggle').click();await expect(frame.locator('h2')).toHaveText('即时更新');
+});
+
 async function openVault(page: Page, vault: string) {
   await page.getByLabel('笔记库绝对路径').fill(vault);
   await page.getByRole('button', { name: '按路径打开', exact: true }).click();
