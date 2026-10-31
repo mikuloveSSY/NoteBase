@@ -27,6 +27,13 @@ header { padding:16px 24px; }
 #searchResults { flex:0 0 auto; max-height:220px; min-height:0; }
 #searchResults:not(:empty) { min-height:64px; }
 #searchResults small { display:block; white-space:normal; padding-top:4px; color:var(--muted); }
+.sidebar-tools { margin:10px 0; padding:0; border:1px solid var(--border); border-radius:8px; }
+.sidebar-tools>summary { margin:0; padding:10px; }
+.sidebar-tools-content { padding:10px; max-height:58vh; overflow:auto; }
+.sidebar-tools-content>.field { display:block; }
+.sidebar-tools .brand { font-size:20px; margin-bottom:14px; }
+.sidebar-tools .section-title { margin-top:16px; }
+#notes { border:1px solid var(--muted); border-radius:8px; padding:6px; background:var(--surface); min-height:120px; }
 #searchInfo { font-size:12px; padding:8px 0; overflow-wrap:anywhere; }
 .settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 .settings-grid label { font-size:13px; }

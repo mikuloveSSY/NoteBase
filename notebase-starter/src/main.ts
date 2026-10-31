@@ -15,12 +15,12 @@ import { mountDataTools } from './member3';
 import { chooseVaultFolder } from './vault-dialog';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = [
-  '<aside><div class="brand"><b>N</b><div>NoteBase<small>本地优先 · Markdown</small></div></div>',
-  '<button id="open" class="primary">选择笔记库文件夹…</button><label class="field">笔记库路径（也可手动输入）<input id="vaultPath" placeholder="选择文件夹后自动填入" aria-label="笔记库绝对路径"></label><button id="openPath">按路径打开</button>',
+  '<aside class="library-sidebar"><button id="open" class="primary">选择笔记库文件夹…</button>',
+  '<details id="sidebarTools" class="sidebar-tools"><summary>笔记库工具</summary><div class="sidebar-tools-content"><div class="brand"><b>N</b><div>NoteBase<small>本地优先 · Markdown</small></div></div><label class="field">笔记库路径（也可手动输入）<input id="vaultPath" placeholder="选择文件夹后自动填入" aria-label="笔记库绝对路径"></label><button id="openPath">按路径打开</button>',
   '<label class="field">搜索笔记<input id="searchQuery" aria-label="搜索笔记" placeholder="关键词、title:标题、tag:标签"></label><div class="compact-actions"><button id="searchButton">搜索</button><button id="rebuild">后台重建索引</button></div><details><summary>搜索筛选</summary><label class="field">路径前缀<input id="searchPath"></label><label class="field">标签<input id="searchTag"></label><label class="field">排序<select id="searchSort"><option value="relevance">相关性</option><option value="mtime">最近修改</option></select></label></details><div id="searchInfo" role="status" aria-live="polite"></div><nav id="searchResults" aria-label="搜索结果"></nav><button id="searchMore" hidden>更多搜索结果</button><button id="migrate">迁移笔记库目录</button><p id="indexWarning" role="alert" hidden></p>',
   '<div class="section-title">笔记 <button id="new" aria-label="新建笔记">＋ 新建</button></div>',
   '<details class="new-options"><summary>新建目录与模板</summary><label class="field">目录<input id="newDir" placeholder="留空为根目录"></label><label class="field">模板<select id="template"><option value="">空白笔记</option></select></label><small id="templateStatus"></small></details>',
-  '<label class="check"><input type="checkbox" id="favoriteFilter">仅收藏</label><label class="check"><input type="checkbox" id="groupTree" checked>按目录分组</label>',
+  '<label class="check"><input type="checkbox" id="favoriteFilter">仅收藏</label><label class="check"><input type="checkbox" id="groupTree" checked>按目录分组</label></div></details>',
   '<nav id="notes" aria-label="笔记列表"></nav><button id="more" hidden>加载更多笔记</button><button id="refresh">刷新文件列表</button>',
   '<div class="sidebar-foot">文件是唯一数据源<br>主干版本 ' + version + '</div></aside>',
   '<main><header><div><span class="eyebrow">工作空间</span><h1 id="title">选择或新建一篇笔记</h1><div id="path" class="muted">从左侧打开已有的 Markdown 文件夹</div></div>',
@@ -42,6 +42,11 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = [
   '<dialog id="targetDialog" aria-labelledby="targetTitle"><h2 id="targetTitle">选择链接目标</h2><div id="targetCandidates"></div><button id="targetClose">关闭</button></dialog>',
 ].join('');
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+const sidebarTools = $<HTMLDetailsElement>('sidebarTools');
+try { sidebarTools.open = localStorage.getItem('notebase-sidebar-tools') === 'open'; } catch { /* Optional layout preference. */ }
+sidebarTools.addEventListener('toggle', () => {
+  try { localStorage.setItem('notebase-sidebar-tools', sidebarTools.open ? 'open' : 'closed'); } catch { /* Editing remains available. */ }
+});
 let active: NoteContent | null = null, busy = false, opened = false, loading = false, switching = false, bootReady = false;
 let nextCursor: string | null = null, entries: NoteEntry[] = [];
 let vaultGeneration = 0, externalTreeDirty = false;
@@ -498,7 +503,7 @@ async function boot() {
   if (desktopMode) { const { getCurrentWindow } = await import('@tauri-apps/api/window'); windowLabel = getCurrentWindow().label; }
   const clickAction = (id: string, label: string) => ({ id, label, run: () => $(id).click(), available: () => !($<HTMLButtonElement>(id).disabled) });
   await mountShell([
-    clickAction('new', '新建笔记'), { id: 'search', label: '搜索笔记', run: () => $('searchQuery').focus() },
+    clickAction('new', '新建笔记'), { id: 'search', label: '搜索笔记', run: () => { sidebarTools.open = true; $('searchQuery').focus(); } },
     { id: 'save', label: '保存当前笔记', run: save, available: () => !!active && !active.readOnly },
     { id: 'nextTab', label: '切换到下一标签页', run: () => run(async () => { const paths = [...tabs]; if (paths.length) await read(paths[(paths.indexOf(active?.path ?? '') + 1) % paths.length]); }) },
     { id: 'newWindow', label: '新建笔记窗口', run: newWindow, available: () => desktopMode && opened },

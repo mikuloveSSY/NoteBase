@@ -21,7 +21,7 @@ async function dataBridge(page:Page){
  if(command==='backup_restore'){if(window.__restoreFailure&&!p.verifyOnly)throw {code:'E_IO_PERMISSION',message:'恢复发布失败',detail:{retainedOriginalDir:'/fixture/retained-vault',snapshotPath:'/fixture/before.zip'}};return p.verifyOnly?{verified:true,noteCount:1}:{restoredTo:p.targetPath,snapshotPath:'/fixture/before.zip'};}
  if(command==='sync_configure')return {ok:true};if(command==='sync_now')return {completed:true,conflicts:['A.md']};if(command==='sync_status')return {state:'conflict',conflicts:['A.md']};
  if(command==='settings_set'){if(p.values.backup)window.__versionDays=p.values.backup.versionRetentionDays;return {ok:true};}throw new Error('unsupported '+command);}` }));
- await page.goto('/');await page.locator('#openPath').click();await page.getByRole('button',{name:'A.md',exact:true}).click();
+ await page.goto('/');await page.locator('#sidebarTools>summary').click();await page.locator('#openPath').click();await page.getByRole('button',{name:'A.md',exact:true}).click();
 }
 
 test('选择文件夹后自动填入并打开所选中文路径',async({page})=>{

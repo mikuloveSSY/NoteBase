@@ -62,7 +62,7 @@ test('周期检查clean自动重读，dirty保留本地并暂停', async ({ page
 });
 
 test('demo支持模板、属性、rename计划取消零写、回收站和二次确认删除', async ({ page }) => {
-  await page.goto('/'); await page.getByText('新建目录与模板', { exact: true }).click(); await expect(page.locator('#template')).toBeEnabled(); await page.locator('#template').selectOption('templates/每日记录.md'); await page.locator('#newDir').fill('日记');
+  await page.goto('/'); await page.locator('#sidebarTools>summary').click(); await page.getByText('新建目录与模板', { exact: true }).click(); await expect(page.locator('#template')).toBeEnabled(); await page.locator('#template').selectOption('templates/每日记录.md'); await page.locator('#newDir').fill('日记');
   page.once('dialog', d => d.accept('今日')); await page.locator('#new').click(); await expect(page.locator('#path')).toHaveText('日记/今日.md'); await expect(page.locator('.cm-content')).toContainText('# 今日');
   await page.locator('#propertyTitle').fill('今日总结'); await page.locator('#propertyStatus').fill('进行中'); await page.locator('#created').fill('2026-01-01T09:00:00+08:00'); await page.locator('#updated').fill('2026-01-01T11:00:00Z');
   await page.locator('#tags').fill('研究/软件, 记录'); await page.locator('#aliases').fill('今天'); await page.locator('#favorite').check(); await page.locator('#pinned').check(); await page.locator('#propertiesSave').click();

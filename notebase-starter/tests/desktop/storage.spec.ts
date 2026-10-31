@@ -85,6 +85,7 @@ test('真实桌面已注册原生文件夹选择插件且具有打开权限',asy
 test('真实桌面搜索中文并打开命中笔记',async({desktopPage:page,vault})=>{
  await writeFile(resolve(vault,'搜索.md'),'# 数据结构\n跨词边界的动态规划内容');await openVault(page,vault);
  await expect(page.locator('#indexStatus')).toContainText('索引已就绪');
+ await page.locator('#sidebarTools>summary').click();await expect(page.locator('#searchQuery')).toBeHidden();await page.keyboard.press('Control+Shift+f');await expect(page.locator('#searchQuery')).toBeFocused();
  await page.getByLabel('搜索笔记',{exact:true}).fill('态规划');await page.getByRole('button',{name:'搜索',exact:true}).click();
  await expect(page.locator('#searchInfo')).toContainText('1 条结果');await page.locator('#searchResults button').click();await expect(page.locator('#path')).toHaveText('搜索.md');
  await page.getByLabel('搜索笔记',{exact:true}).fill('动态');await page.getByRole('button',{name:'搜索',exact:true}).click();await expect(page.locator('#searchInfo')).toContainText('短查询扫描');
@@ -107,6 +108,7 @@ test('真实桌面默认Markdown预览支持表格代码任务图片且实时更
 });
 
 async function openVault(page: Page, vault: string) {
+  if(await page.locator('#sidebarTools').getAttribute('open')===null) await page.locator('#sidebarTools>summary').click();
   await page.getByLabel('笔记库绝对路径').fill(vault);
   await page.getByRole('button', { name: '按路径打开', exact: true }).click();
   await expect(page.locator('#status')).toHaveText('笔记库已打开');
@@ -122,6 +124,7 @@ test('真实桌面列出无权限的子目录并可重新选择可读笔记库',
  try {
   const denied = spawnSync('icacls', [blocked, '/deny', `${account}:(RD)`], { encoding: 'utf8', windowsHide: true });
   expect(denied.status, denied.stdout + denied.stderr).toBe(0);
+  await page.locator('#sidebarTools>summary').click();
   await page.getByLabel('笔记库绝对路径').fill(vault);
   await page.getByRole('button', { name: '按路径打开', exact: true }).click();
   await expect(page.locator('#status')).toContainText('E_IO_PERMISSION');

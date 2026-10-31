@@ -1,4 +1,21 @@
 import { test, expect } from '@playwright/test';
+test('侧栏工具默认收起，折叠保留编辑和文件列表，展开状态可恢复', async ({ page }, testInfo) => {
+  await page.goto('/'); await expect(page.locator('#new')).toBeEnabled();
+  await expect(page.locator('#open')).toBeVisible(); await expect(page.locator('#notes')).toBeVisible(); await expect(page.locator('#searchQuery')).toBeHidden(); await expect(page.locator('.brand')).toBeHidden();
+  await page.getByRole('button', { name: '欢迎.md', exact: true }).click();
+  await page.locator('.cm-content').click(); await page.keyboard.press('Control+End'); await page.keyboard.insertText(' 折叠期间保留');
+  await page.locator('#sidebarTools>summary').click(); await expect(page.locator('#new')).toBeVisible();
+  await page.locator('.library-sidebar').screenshot({ path: testInfo.outputPath('expanded-light.png') });
+  await page.locator('#sidebarTools>summary').click(); await expect(page.locator('.cm-content')).toContainText('折叠期间保留'); await expect(page.locator('#notes')).toBeVisible();
+  await page.locator('.library-sidebar').screenshot({ path: testInfo.outputPath('collapsed-light.png') });
+  await page.locator('#save').click();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('notebase-sidebar-tools'))).toBe('closed');
+  await page.reload(); await expect(page.locator('#searchQuery')).toBeHidden();
+  await page.locator('#sidebarTools>summary').click(); await expect.poll(() => page.evaluate(() => localStorage.getItem('notebase-sidebar-tools'))).toBe('open');
+  await page.reload(); await expect(page.locator('#new')).toBeVisible();
+  await page.locator('#sidebarTools>summary').click(); await page.locator('#settings').click(); await page.locator('#theme').selectOption('dark'); await page.locator('#settingsSave').click();
+  await page.locator('.library-sidebar').screenshot({ path: testInfo.outputPath('collapsed-dark.png') });
+});
 test('主题和编辑器偏好持久化，冲突快捷键不覆盖旧设置', async ({ page }) => {
   await page.goto('/'); await expect(page.locator('#new')).toBeEnabled(); await page.locator('#settings').click();
   await page.locator('#theme').selectOption('dark'); await page.locator('#fontSize').fill('18'); await page.locator('#settingsSave').click();
