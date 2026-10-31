@@ -8,6 +8,7 @@
 - [一二四整合与本轮验收](notebase-starter/docs/一二四整合验收.md)
 - [成员三后续接入约定](notebase-starter/docs/成员三接入约定.md)
 - [四人研发整合计划](docs/四人研发整合计划.md)
+- [成员三推送后的完整整合计划](docs/四人成果完整整合计划.md)
 - [成员一开发计划](docs/成员一开发计划.md)
 - [存储接口交接](notebase-starter/docs/存储初版交接.md)
 - [索引基础交接](notebase-starter/docs/索引基础交接.md)
