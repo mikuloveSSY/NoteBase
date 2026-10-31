@@ -1,0 +1,337 @@
+   Compiling notebase-core v0.7.0 (D:\NoteBase\repository\notebase-starter\crates\notebase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 27.82s
+     Running unittests src\lib.rs (D:/NoteBase/.tools/team-all-core-target\debug\deps\notebase_core-4ae59d7c8881b811.exe)
+
+running 13 tests
+test domain::event_tests::transport_names_match_typescript_contract ... ok
+test index::queue::tests::duplicates_preserve_local_source_and_overflow_requests_reconcile ... ok
+test infra::tests::interrupted_atomic_write_preserves_original_and_cleans_temp ... ok
+test migration::tests::equal_file_count_and_size_do_not_hide_changed_content ... ok
+test data_services::sync::cancellation_tests::cancellation_after_failed_http_request_prevents_retries ... ok
+test index::worker::tests::cancellation_between_file_reads_never_commits_a_ready_index ... ok
+test index::worker::tests::local_save_during_build_does_not_publish_ready ... ok
+test index::incremental::tests::reconcile_preserves_unchanged_records_but_checks_hash_when_stat_is_equal ... ok
+test index::sqlite::compaction_tests::compaction_preserves_sparse_note_rowids_fts_and_all_business_records ... ok
+test index::worker::tests::missing_index_scan_fallback_has_stable_paging ... ok
+test data_services::sync::cancellation_tests::cancellation_interrupts_http_retry_backoff ... ok
+test index::worker::tests::slow_reconcile_waits_a_full_interval_after_completion ... ok
+test index::sqlite::compaction_tests::repeated_publication_reuses_space_instead_of_retaining_deleted_segments ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.46s
+
+     Running tests\concurrency.rs (D:/NoteBase/.tools/team-all-core-target\debug\deps\concurrency-33bc5752b6d9b96d.exe)
+
+running 2 tests
+test same_vault_reopen_keeps_shared_session_and_app_drop_cancels_external_arc ... ok
+test detached_query_allows_application_work_and_switch_cancels_old_session ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\core.rs (D:/NoteBase/.tools/team-all-core-target\debug\deps\core-59c5c38f52b10ac4.exe)
+
+running 15 tests
+test unimplemented_does_not_report_success ... ok
+test rejects_traversal_and_reserved_names ... ok
+test bad_yaml_remains_intact ... ok
+test invalid_utf8_is_not_overwritten ... ok
+test rejects_stale_client_without_writing ... ok
+test readonly_file_preview_cannot_be_saved_through_ipc ... ok
+test duplicate_create_never_overwrites ... ok
+test yaml_parses_without_removing_original ... ok
+test external_modification_preserved ... ok
+test pagination_and_trash_exclusion ... ok
+test create_read_save_hash_and_no_temporary_files ... ok
+test sanitized_creation_collisions_do_not_overwrite ... ok
+test saving_removes_bom_and_preserves_crlf ... ok
+test large_read_returns_a_bounded_readonly_preview_without_a_save_hash ... ok
+test exactly_ten_megabytes_is_not_truncated_and_small_saves_keep_lf ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.55s
+
+     Running tests\crash_recovery.rs (D:/NoteBase/.tools/team-all-core-target\debug\deps\crash_recovery-13a4555860f94c74.exe)
+
+running 2 tests
+test crash_writer_child ... ok
+test two_hundred_forced_process_exits_preserve_acknowledged_saves_and_drafts ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 17.65s
+
+     Running tests\index.rs (D:/NoteBase/.tools/team-all-core-target\debug\deps\index-bd2301112ea123ec.exe)
+
+running 12 tests
+test invalid_yaml_is_indexed_as_body_but_invalid_encoding_and_large_files_are_rejected ... ok
+test extraction_uses_frontmatter_and_shared_markdown_semantics_without_mutating_source ... ok
+test batch_failure_rolls_back_notes_fts_aliases_and_tags ... ok
+test update_is_idempotent_and_delete_clears_related_fts_and_link_resolution ... ok
+test schema_has_ten_logical_tables_trigram_and_readonly_wal_connections ... ok
+test exclusive_writer_lease_prevents_two_store_writers ... ok
+test unknown_schema_identity_and_corruption_are_not_silently_replaced ... ok
+test version_rebuild_preserves_all_four_business_state_tables ... ok
+test unavailable_index_does_not_block_file_editing_and_reopen_retries_initialization ... ok
+test empty_vault_build_is_ready_and_shutdown_stops_events_and_releases_writer ... ok
+test partial_or_unwritable_index_never_claims_ready_and_cache_cannot_be_in_vault ... ok
+test real_vault_background_build_batches_and_refreshes_without_changing_files ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.75s
+
+     Running tests\links.rs (D:/NoteBase/.tools/team-all-core-target\debug\deps\links-f100a07a82982fbb.exe)
+
+running 18 tests
+test ambiguity_is_reported_even_when_the_nearest_candidate_is_preferred ... ok
+test explicit_paths_take_precedence_over_titles_and_relative_paths_resolve ... ok
+test ignores_frontmatter_html_comments_code_and_embeds ... ok
+test mentions_match_chinese_prose_and_longest_alias_without_overlapping_duplicates ... ok
+test parses_labels_anchors_and_unicode_positions_without_changing_byte_offsets ... ok
+test renamed_paths_containing_hashes_round_trip_without_losing_the_anchor ... ok
+test rename_uses_the_selected_ambiguous_candidate_instead_of_text_matching ... ok
+test backlinks_include_each_real_occurrence_and_detect_transitive_cycles ... ok
+test normalizes_separators_unicode_and_case_without_permitting_vault_escape ... ok
+test mentions_return_original_byte_spans_excluding_links_code_metadata_and_self ... ok
+test rename_preserves_raw_escaped_labels_whitespace_and_anchor_only_links ... ok
+test escaped_delimiters_even_backslashes_and_unmatched_markup_are_handled ... ok
+test graph_is_deterministic_bounded_and_keeps_the_requested_neighborhood ... ok
+test unicode_targets_without_extensions_and_combining_mentions_keep_valid_spans ... ok
+test rename_rewrites_resolved_targets_only_and_preserves_every_other_byte ... ok
+test parses_links_inside_markdown_containers_and_gfm_tables ... ok
+test bom_and_carriage_return_lines_do_not_change_markdown_indentation ... ok
+test graph_caps_total_nodes_at_five_hundred_and_honors_zero ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests\member2.rs (D:/NoteBase/.tools/team-all-core-target\debug\deps\member2-1d4de3280145911d.exe)
+
+running 5 tests
+test draft_acknowledgement_does_not_overwrite_authoritative_note ... ok
+test soft_delete_restores_without_overwriting_a_new_same_name_note ... ok
+test backlinks_and_mentions_are_real_current_file_data ... ok
+test rename_preview_is_readonly_and_execution_rewrites_only_real_links ... ok
+test metadata_patch_retains_body_and_custom_fields ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests\member3.rs (D:/NoteBase/.tools/team-all-core-target\debug\deps\member3-d20c987fa05a7f80.exe)
+
+running 22 tests
+test preview_can_render_unsaved_body_without_writing ... ok
+test unrelated_invalid_utf8_does_not_prevent_exporting_a_valid_note ... ok
+test preview_reuses_gfm_and_preserves_missing_wiki ... ok
+test export_cannot_write_inside_vault_or_escape_through_link ... ok
+test ambiguity_and_unresolved_are_both_reported ... ok
+test malicious_zip_slip_is_rejected ... ok
+test existing_restore_target_is_never_overwritten ... ok
+test version_id_is_not_a_filesystem_path ... ok
+test html_is_single_file_with_images_and_missing_resource_report ... ok
+test corrupted_backup_does_not_partially_restore_or_create_snapshot ... ok
+test markdown_copies_assets_and_does_not_overwrite ... ok
+test manual_backup_uses_configured_directory_and_allows_explicit_override ... ok
+test original_restore_keeps_entire_former_directory ... ok
+test nested_note_assets_are_rebased_without_touching_code_blocks ... ok
+test verify_only_is_readonly ... ok
+test manual_snapshot_deduplicates_and_keeps_description ... ok
+test backup_roundtrip_is_independently_extractable_and_protects_current_vault ... ok
+test schedule_defaults_and_retention_respect_foreign_files ... ok
+test thirty_day_version_retention_and_corruption_checks ... ok
+test save_captures_old_and_new_versions_and_rollback_retains_current ... ok
+test original_restore_waits_for_index_writer_and_reopens_it ... ok
+test pdf_produces_real_document_or_explicit_platform_fallback ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.86s
+
+     Running tests\member3_acceptance.rs (D:/NoteBase/.tools/team-all-core-target\debug\deps\member3_acceptance-daaa34fee2649401.exe)
+
+running 1 test
+test independent_webdav_and_windows_credentials ... ignored, requires disposable NOTEBASE_ACCEPTANCE_DAV and Windows Credential Manager
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\member3_sync.rs (D:/NoteBase/.tools/team-all-core-target\debug\deps\member3_sync-4bbe4b02c9c36209.exe)
+
+running 16 tests
+test three_way_planner_covers_mutations_and_deletions ... ok
+test credentials_require_secure_endpoint_and_reject_embedded_password ... ok
+test real_propfind_parses_namespaced_xml_and_percent_encoded_chinese ... ok
+test real_http_adapter_sends_conditional_put_and_does_not_follow_auth_redirects ... ok
+test cancelled_sync_does_not_start_transport_or_replace_local_content ... ok
+test resolution_payload_cannot_overwrite_remote_without_a_recorded_conflict ... ok
+test default_sync_excludes_attachments_and_trash ... ok
+test status_reports_unsynced_local_edits_after_a_clean_sync ... ok
+test offline_failure_is_visible_and_next_run_catches_up ... ok
+test initial_sync_uploads_and_downloads_and_never_writes_password_to_json ... ok
+test concurrent_modification_preserves_both_and_deduplicates_conflict_copies ... ok
+test known_local_delete_uses_remote_condition_and_does_not_resurrect ... ok
+test sync_baseline_survives_service_restart ... ok
+test explicit_local_conflict_resolution_uploads_only_after_confirmation_payload ... ok
+test known_remote_delete_moves_local_to_recoverable_private_storage ... ok
+test conflict_confirmation_rejects_new_remote_revision_until_conflict_is_reviewed_again ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s
+
+     Running tests\member4.rs (D:/NoteBase/.tools/team-all-core-target\debug\deps\member4-b281507e067ae7e5.exe)
+
+running 4 tests
+test malformed_settings_are_retained_without_overwrite ... ok
+test logs_are_bounded_redacted_and_expire_only_owned_files ... ok
+test preferences_preserve_vault_and_other_members_keys_and_reject_conflicts_atomically ... ok
+test integrated_member_two_save_is_queued_and_searchable_and_reopen_preserves_clients ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests\merge_integration.rs (D:/NoteBase/.tools/team-all-core-target\debug\deps\merge_integration-a8abd72bb86cb078.exe)
+
+running 2 tests
+test settings_migration_preserves_private_drafts_and_resumes_relative_rename_in_new_vault ... ok
+test indexed_member2_draft_save_rename_delete_restore_catches_up_without_full_rebuild ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.96s
+
+     Running tests\note_lifecycle.rs (D:/NoteBase/.tools/team-all-core-target\debug\deps\note_lifecycle-81e5496751d1f172.exe)
+
+running 8 tests
+test private_state_may_not_be_configured_inside_the_vault ... ok
+test renaming_to_the_existing_name_is_a_confirmed_noop ... ok
+test malformed_rename_state_is_rejected_without_poisoning_app ... ok
+test invalid_metadata_patch_and_stale_rename_leave_files_intact ... ok
+test explicit_conflict_choice_rechecks_disk_version ... ok
+test attachment_copy_is_relative_and_collision_safe ... ok
+test restart_recovers_draft_as_copy_when_disk_changed ... ok
+test a_saved_revision_cannot_delete_a_newer_draft ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests\note_state.rs (D:/NoteBase/.tools/team-all-core-target\debug\deps\note_state-5887c6cdccdc8d92.exe)
+
+running 10 tests
+test memory_store_roundtrips_removes_and_lists_in_key_order ... ok
+test state_keys_reject_windows_devices_and_overlong_components ... ok
+test invalid_buckets_and_keys_are_rejected ... ok
+test remove_is_idempotent_and_rejects_non_files ... ok
+test corrupt_json_is_an_error_and_remains_on_disk ... ok
+test open_creates_and_checks_all_missing_parent_directories ... ok
+test fs_store_persists_state_and_leaves_index_db_untouched ... ok
+test windows_junctions_in_state_paths_are_rejected ... ok
+test oversized_json_is_an_error_and_remains_on_disk ... ok
+test fs_store_accepts_ten_mib_body_after_json_escaping ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.58s
+
+     Running tests\organization.rs (D:/NoteBase/.tools/team-all-core-target\debug\deps\organization-be795a65c8e6414a.exe)
+
+running 8 tests
+test render_template_replaces_only_the_three_supported_placeholders ... ok
+test invalid_existing_frontmatter_is_never_rewritten_by_patch ... ok
+test tag_matches_exact_tags_and_parent_segments ... ok
+test inspect_reports_fields_and_exact_body_start_for_crlf ... ok
+test patch_retains_custom_fields_and_body_bytes_while_preserving_crlf ... ok
+test inspect_treats_invalid_and_duplicate_yaml_as_located_errors ... ok
+test patch_rejects_wrong_metadata_types_without_returning_text ... ok
+test patch_deletes_null_fields_and_inserts_frontmatter_when_missing ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\recovery.rs (D:/NoteBase/.tools/team-all-core-target\debug\deps\recovery-75532366b44f685c.exe)
+
+running 14 tests
+test settings_persistence_keeps_other_members_fields_and_refuses_bad_json ... ok
+test migration_refuses_directory_junction_without_touching_original ... ok
+test migration_copies_notes_attachments_trash_and_empty_directories_and_keeps_source ... ok
+test identity_mismatch_and_active_writer_are_not_treated_as_corruption ... ok
+test corrupt_database_is_archived_without_overwriting_original_bytes ... ok
+test ipc_migration_switches_only_after_verified_copy_and_recalculates_id ... ok
+test failed_settings_commit_keeps_active_source_and_original_config ... ok
+test candidate_publication_rolls_back_on_failure_and_preserves_business ... ok
+test migration_carries_snapshot_blobs_and_known_business_state_to_new_vault_id ... ok
+test unknown_schema_preserves_original_and_restores_four_known_business_tables ... ok
+test unrecoverable_business_state_keeps_archive_and_warning_on_next_open ... ok
+test startup_recovers_corruption_and_rebuilds_real_notes ... ok
+test interrupted_background_rebuild_leaves_a_complete_main_index ... ok
+test background_rebuild_returns_job_and_retains_old_query_while_accepting_save ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.31s
+
+     Running tests\release_safety.rs (D:/NoteBase/.tools/team-all-core-target\debug\deps\release_safety-589f930aa89ba07e.exe)
+
+running 3 tests
+test failed_migration_settings_commit_restarts_source_search_and_allows_next_save ... ok
+test partial_sync_cancel_reconciles_search_and_preserves_draft_then_retries ... ok
+test partial_sync_network_failure_reconciles_search_and_preserves_draft_then_retries ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.46s
+
+     Running tests\rename_recovery.rs (D:/NoteBase/.tools/team-all-core-target\debug\deps\rename_recovery-7fed4fa2d8492d40.exe)
+
+running 4 tests
+test externally_changed_pending_reference_is_preserved_during_resume ... ok
+test user_edits_to_completed_references_do_not_block_remaining_recovery ... ok
+test interrupted_rename_survives_restart_and_is_idempotent ... ok
+test completed_source_self_link_may_be_edited_before_remaining_recovery ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s
+
+     Running tests\search.rs (D:/NoteBase/.tools/team-all-core-target\debug\deps\search-956e69f0aa0d9bdc.exe)
+
+running 7 tests
+test malformed_queries_are_distinct_from_empty_results_and_html_is_escaped ... ok
+test stable_pagination_rejects_query_or_snapshot_mismatch ... ok
+test phrase_negation_fields_and_metadata_filters ... ok
+test chinese_long_short_substring_alias_tag_and_literal_symbols ... ok
+test vectorized_body_prefilter_keeps_literal_like_results ... ok
+test optimized_title_candidates_keep_literal_unicode_and_ascii_case_semantics ... ok
+test parallel_pool_queries_preserve_counts_and_empty_past_end_pages ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s
+
+     Running tests\storage.rs (D:/NoteBase/.tools/team-all-core-target\debug\deps\storage-4af2bed705a07469.exe)
+
+running 13 tests
+test new_titles_are_sanitized_without_accepting_empty_input ... ok
+test path_rules_cover_unicode_devices_separators_and_lengths ... ok
+test full_path_limit_is_checked_before_creating_a_file ... ok
+test large_file_read_is_bounded_and_write_is_rejected ... ok
+test directories_cannot_be_read_deleted_or_replaced_as_notes ... ok
+test readonly_file_is_reported_and_replacement_is_refused ... ok
+test windows_sharing_violation_reports_retryable_error_and_cleans_temp ... ok
+test failed_rename_and_missing_parent_leave_source_untouched ... ok
+test duplicate_creation_and_rename_never_overwrite_existing_content ... ok
+test oversized_replacement_does_not_touch_a_small_file ... ok
+test create_stat_rename_and_delete_use_the_same_port ... ok
+test listing_is_scoped_and_only_excludes_special_directories_at_vault_root ... ok
+test windows_junction_cannot_escape_vault ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests\team_all.rs (D:/NoteBase/.tools/team-all-core-target\debug\deps\team_all-2c47f4197f2dd26f.exe)
+
+running 5 tests
+test deduplicated_version_keeps_description_creation_time_and_renews_retention ... ok
+test long_job_releases_app_lock_rejects_writes_and_always_restores_service ... ok
+test failed_restore_releases_maintenance_and_reopens_index_without_touching_notes ... ok
+test backup_and_original_restore_stop_old_arc_restart_search_and_clear_old_baselines ... ok
+test mixed_settings_and_migration_preserve_backup_history_and_sync_references ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s
+
+     Running tests\trash_retention.rs (D:/NoteBase/.tools/team-all-core-target\debug\deps\trash_retention-fcb9a8e475a66182.exe)
+
+running 1 test
+test thirty_day_cleanup_uses_deletion_time_not_old_note_mtime ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\watch.rs (D:/NoteBase/.tools/team-all-core-target\debug\deps\watch-3b0236a952253c93.exe)
+
+running 7 tests
+test event_rescan_and_ignored_paths_do_not_lose_reconciliation_request ... ok
+test initially_invalid_vault_becomes_searchable_after_repair ... ok
+test invalid_external_content_removes_stale_hit_and_recovers_when_fixed ... ok
+test overflow_reconciles_all_changes_and_increment_invalidates_old_search_cursor ... ok
+test local_queue_is_deduplicated_and_updates_without_reopen_or_duplicate_external_event ... ok
+test native_events_cover_create_modify_atomic_replace_delete_and_rename ... ok
+test polling_fallback_reconciles_missed_events_and_directory_rename ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.04s
+
+   Doc-tests notebase_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

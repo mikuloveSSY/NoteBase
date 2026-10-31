@@ -1,0 +1,6 @@
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling notebase v0.7.0 (D:\NoteBase\repository\notebase-starter\src-tauri)
+    Checking notebase-core v0.7.0 (D:\NoteBase\repository\notebase-starter\crates\notebase-core)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 6.87s
