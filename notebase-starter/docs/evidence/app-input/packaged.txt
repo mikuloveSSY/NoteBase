@@ -1,0 +1,13 @@
+
+> notebase-starter@0.7.0 test:desktop
+> playwright test --config playwright.desktop.config.ts --grep 新建保留名|迁移校验
+
+
+Running 2 tests using 1 worker
+
+(node:40452) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 1 tests\desktop\storage.spec.ts:163:1 › 真实桌面新建保留名 自动修正且不覆盖同名文件 (2.2s)
+  ok 2 tests\desktop\storage.spec.ts:267:1 › 真实桌面迁移校验文件并保留原目录 (3.3s)
+
+  2 passed (6.1s)
