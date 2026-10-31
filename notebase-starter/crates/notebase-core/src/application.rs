@@ -1,3 +1,4 @@
+mod tasks;
 use crate::domain::{self, field, AppError, NoteStore, RelPath, Request, Response, Result};
 use crate::index::{IndexSession, IndexStatus};
 use crate::migration::VaultLocation;
@@ -6,13 +7,22 @@ use crate::note_service::{content_hash, NoteService};
 use crate::note_state::NoteStateStore;
 use serde_json::{json, Value};
 use std::sync::Arc;
+pub use tasks::DataTask;
 
 type StoreFactory = Box<dyn Fn(&str) -> Result<Box<dyn NoteStore>> + Send + Sync>;
 pub type IndexFactory = Box<dyn Fn(&str, &str) -> Arc<dyn IndexSession> + Send + Sync>;
 pub type SupportFactory =
     Box<dyn Fn(&str, &str) -> Result<(Box<dyn NoteFiles>, Box<dyn NoteStateStore>)> + Send + Sync>;
 pub type NoteEvents = Arc<dyn Fn(&str, Value) + Send + Sync>;
+pub type DataFactory =
+    Box<dyn Fn(&str, &str) -> Result<Box<dyn crate::data_services::DataService>> + Send + Sync>;
 pub struct App {
+    last_sync_attempt: u64,
+    busy_command: Option<String>,
+    cancel_task: Option<Arc<std::sync::atomic::AtomicBool>>,
+    vault_generation: u64,
+    data_factory: Option<DataFactory>,
+    data: Option<Box<dyn crate::data_services::DataService>>,
     notes: Option<NoteService>,
     factory: StoreFactory,
     index_factory: Option<IndexFactory>,
@@ -25,6 +35,12 @@ pub struct App {
 impl App {
     pub fn new(factory: StoreFactory) -> Self {
         Self {
+            last_sync_attempt: 0,
+            busy_command: None,
+            cancel_task: None,
+            vault_generation: 0,
+            data_factory: None,
+            data: None,
             notes: None,
             factory,
             index_factory: None,
@@ -38,6 +54,58 @@ impl App {
     pub fn with_index(mut self, factory: IndexFactory) -> Self {
         self.index_factory = Some(factory);
         self
+    }
+    pub fn with_data(mut self, factory: DataFactory) -> Self {
+        self.data_factory = Some(factory);
+        self
+    }
+    fn data(&self) -> Result<&dyn crate::data_services::DataService> {
+        if self.data_task_active() {
+            return Err(self.busy_error());
+        }
+        self.data
+            .as_deref()
+            .ok_or_else(|| AppError::new("E_INTERNAL", "数据保障端口尚未装配"))
+    }
+    /// Called by the shell's maintenance timer; no extra IPC command is introduced.
+    pub fn maintenance(&mut self, now: u64) -> Result<Value> {
+        if self.data.is_none() {
+            return Ok(json!({"created":false}));
+        }
+        let pruned = self.data()?.prune_versions(now)?;
+        if !self.data()?.maintenance_due(now)? {
+            return Ok(json!({"created":false,"prunedVersions":pruned}));
+        }
+        self.with_index_paused(|service| service.maintenance(now))
+    }
+    pub fn background_sync(&mut self, now: u64) -> Result<Value> {
+        if self.data.is_none() || now.saturating_sub(self.last_sync_attempt) < 300000 {
+            return Ok(json!({"started":false}));
+        }
+        let status = self.data()?.sync_status()?;
+        if status["state"] == "unconfigured" || status["authRequired"] == true {
+            return Ok(json!({"started":false}));
+        }
+        self.last_sync_attempt = now;
+        self.handle("sync_now", &json!({}))
+    }
+    fn with_index_paused(
+        &mut self,
+        f: impl FnOnce(&dyn crate::data_services::DataService) -> Result<Value>,
+    ) -> Result<Value> {
+        self.data()?;
+        let vault = self.notes()?.store.vault_path();
+        let id = content_hash(vault.as_bytes())[7..23].to_owned();
+        if let Some(index) = self.index.as_ref() {
+            index.suspend()?;
+        }
+        self.cancel_index();
+        let result = f(self.data()?);
+        self.index = self
+            .index_factory
+            .as_ref()
+            .map(|factory| factory(&vault, &id));
+        result
     }
     pub fn with_location(mut self, location: Box<dyn VaultLocation>) -> Self {
         self.location = Some(location);
@@ -121,6 +189,14 @@ impl App {
                 .transpose()?
                 .flatten()
         });
+        if self.notes.is_some()
+            && (p.get("keys").is_none()
+                || p["keys"]
+                    .as_array()
+                    .is_some_and(|keys| keys.iter().any(|key| key == "backup")))
+        {
+            values["backup"] = self.data()?.settings()?;
+        }
         if let Some(keys) = p.get("keys") {
             let keys = keys
                 .as_array()
@@ -140,6 +216,22 @@ impl App {
         Ok(json!({"values":values}))
     }
     fn migrate(&mut self, p: &Value) -> Result<Value> {
+        let source = self.notes()?.store.vault_path();
+        let id = content_hash(source.as_bytes())[7..23].to_owned();
+        if let Some(index) = &self.index {
+            index.suspend()?;
+        }
+        self.cancel_index();
+        let result = self.migrate_inner(p);
+        if result.is_err() {
+            self.index = self
+                .index_factory
+                .as_ref()
+                .map(|factory| factory(&source, &id));
+        }
+        result
+    }
+    fn migrate_inner(&mut self, p: &Value) -> Result<Value> {
         let values = p
             .get("values")
             .and_then(Value::as_object)
@@ -162,6 +254,11 @@ impl App {
         let vault = store.vault_path();
         let id = content_hash(vault.as_bytes())[7..23].to_owned();
         let notes = self.assemble_notes(store, &id)?;
+        let data = self
+            .data_factory
+            .as_ref()
+            .map(|factory| factory(&vault, &id))
+            .transpose()?;
         // Verify copied private state before committing the new configured path.
         notes.list(&json!({"scope":"drafts"}))?;
         notes.list(&json!({"scope":"renames"}))?;
@@ -172,9 +269,21 @@ impl App {
             .as_ref()
             .map(|factory| factory(&vault, &id));
         self.notes = Some(notes);
+        self.data = data;
+        self.vault_generation += 1;
+        self.last_sync_attempt = 0;
         Ok(json!({"ok":true}))
     }
     fn handle(&mut self, command: &str, p: &Value) -> Result<Value> {
+        if self.data_task_active()
+            && !matches!(
+                command,
+                "index_status" | "search" | "note_read" | "note_list"
+            )
+            && !(command == "note_save" && p["action"] == "draft")
+        {
+            return Err(self.busy_error());
+        }
         match command {
             "settings_get" => return self.settings_get(p),
             "settings_set" => {
@@ -182,6 +291,12 @@ impl App {
                     .get("values")
                     .and_then(Value::as_object)
                     .ok_or_else(|| AppError::new("E_PATH_INVALID", "values 必须是对象"))?;
+                if values.contains_key("backup") {
+                    if values.len() != 1 {
+                        return Err(AppError::new("E_PATH_INVALID", "备份设置必须单独提交"));
+                    }
+                    return self.data()?.configure(&p["values"]["backup"]);
+                }
                 if values.contains_key("vaultPath") {
                     return self.migrate(p);
                 }
@@ -213,6 +328,12 @@ impl App {
                     return Ok(json!({"vaultId":id,"noteCount":count,"warnings":[]}));
                 }
                 let notes = self.assemble_notes(store, &id)?;
+                let data = self
+                    .data_factory
+                    .as_ref()
+                    .map(|factory| factory(&vault, &id))
+                    .transpose()?;
+                self.last_sync_attempt = 0;
                 let reused = self
                     .index
                     .as_ref()
@@ -234,6 +355,8 @@ impl App {
                     }
                 }
                 self.notes = Some(notes);
+                self.data = data;
+                self.vault_generation += 1;
                 return Ok(
                     json!({"vaultId":id,"noteCount":count,"warnings":cleanup.err().map(|e|vec![format!("回收站清理未完成：{}",e.message)]).unwrap_or_default()}),
                 );
@@ -270,8 +393,106 @@ impl App {
                     .rebuild()?;
                 return Ok(json!({"jobId":id}));
             }
+            "export_note" => return self.data()?.export(p),
+            "sync_configure" => return self.data()?.sync_configure(p),
+            "sync_status" => return self.data()?.sync_status(),
+            "sync_now" => {
+                if let Some(events) = &self.events {
+                    events("sync.state", json!({"state":"pending"}));
+                }
+                let result = self.data()?.sync_now(p);
+                if let Some(events) = &self.events {
+                    match &result {
+                        Ok(r) => {
+                            events("sync.state", json!({"state":r["state"]}));
+                            if r["conflicts"].as_array().is_some_and(|v| !v.is_empty()) {
+                                events("conflict.detected", json!({"paths":r["conflicts"]}));
+                            }
+                        }
+                        Err(e) => events("sync.state", json!({"state":"dirty","lastError":e.code})),
+                    }
+                }
+                if let Ok(r) = &result {
+                    if let Some(paths) = r["changedPaths"].as_array() {
+                        for path in paths.iter().filter_map(Value::as_str) {
+                            if let Some(index) = &self.index {
+                                if let Ok(rel) = RelPath::new(path) {
+                                    index.enqueue(&rel);
+                                }
+                            }
+                            if let Some(events) = &self.events {
+                                events(
+                                    "note.changed",
+                                    json!({"path":path,"source":"external","kind":"sync"}),
+                                );
+                            }
+                        }
+                    }
+                }
+                if result.is_err() {
+                    if let Some(index) = &self.index {
+                        index.refresh();
+                    }
+                    if let Some(events) = &self.events {
+                        events("note.changed", json!({"source":"external","kind":"sync"}));
+                    }
+                }
+                return result;
+            }
+            "backup_create" => {
+                if p["scope"] == "note" {
+                    return self.data()?.backup_create(p);
+                }
+                return self.with_index_paused(|service| service.backup_create(p));
+            }
+            "backup_restore" => {
+                if p["verifyOnly"] == true {
+                    return self.data()?.backup_restore(p);
+                }
+                let result = self.with_index_paused(|service| service.backup_restore(p));
+                // Existing editor baselines intentionally remain stale: a following save must detect the restored disk hash.
+                if result.is_ok() {
+                    if let Some(events) = &self.events {
+                        events(
+                            "note.changed",
+                            json!({"kind":"backup.restored","source":"local"}),
+                        );
+                    }
+                }
+                return result;
+            }
+            "note_list" if p["scope"] == "versions" => return self.data()?.versions(p),
+            "note_read" if p.get("versionId").is_some() => {
+                return Ok(
+                    json!({"body":self.data()?.version_body(p)?,"versionId":p["versionId"],"path":p["path"]}),
+                )
+            }
             _ => {}
         }
+        let version = if command == "note_restore" && p["kind"] == "version" {
+            Some(self.data()?.version_body(p)?)
+        } else {
+            None
+        };
+        let mut effective = p.clone();
+        if let Some(body) = version {
+            effective["body"] = json!(body);
+            effective["action"] = json!("save");
+        }
+        let p = &effective;
+        let old_snapshot = if (command == "note_save"
+            && (p["action"].is_null() || p["action"] == "save" || p["action"] == "metadata"))
+            || (command == "note_restore" && p["kind"] == "version")
+        {
+            p["path"]
+                .as_str()
+                .and_then(|path| RelPath::new(path).ok())
+                .and_then(|path| self.notes.as_ref()?.store.read(&path).ok())
+                .filter(|s| !s.truncated)
+                .map(|s| s.raw)
+        } else {
+            None
+        };
         let now = crate::index::now_ms();
         let mut result = match command {
             "note_list" => self.notes()?.list(p),
@@ -279,6 +500,7 @@ impl App {
             "note_create" => self.notes()?.create(p, now),
             "note_save" => self.notes()?.save(p, now),
             "note_delete" => self.notes()?.delete(p, now),
+            "note_restore" if p["kind"] == "version" => self.notes()?.save(p, now),
             "note_restore" => self.notes()?.restore(p, now),
             "note_rename" => self.notes()?.rename(p, now),
             "link_backlinks" | "link_mentions" | "link_graph" => {
@@ -314,6 +536,40 @@ impl App {
                     "note.changed",
                     json!({"path":path.as_str(),"kind":command,"source":"local","clientId":p["clientId"]}),
                 );
+            }
+        }
+        if let (Some(service), Ok(data)) = (&self.data, &mut result) {
+            if data.get("snapshotCreated").is_some() {
+                let attempt = (|| -> Result<Value> {
+                    let path = data
+                        .get("path")
+                        .and_then(Value::as_str)
+                        .or_else(|| p["path"].as_str())
+                        .ok_or_else(|| AppError::new("E_INTERNAL", "保存未返回笔记路径"))?;
+                    if let Some(old) = &old_snapshot {
+                        service.snapshot(path, old, "")?;
+                    }
+                    let stored = self
+                        .notes
+                        .as_ref()
+                        .ok_or_else(|| AppError::new("E_VAULT_NOT_FOUND", "未打开库"))?
+                        .store
+                        .read(&RelPath::new(path)?)?;
+                    if content_hash(&stored.raw) != data["contentHash"] {
+                        return Err(AppError::new(
+                            "E_EXTERNAL_MODIFIED",
+                            "保存后磁盘内容已变化，拒绝记录为本次保存快照",
+                        ));
+                    }
+                    service.snapshot(path, &stored.raw, "")
+                })();
+                data["snapshotCreated"] = json!(attempt.is_ok());
+                if let Some(warnings) = data.get_mut("warnings").and_then(Value::as_array_mut) {
+                    warnings.retain(|w| w.as_str() != Some("版本快照尚未接入"));
+                    if let Err(e) = attempt {
+                        warnings.push(json!(format!("文件已保存，历史快照失败：{}", e.message)));
+                    }
+                }
             }
         }
         if let Ok(data) = &mut result {

@@ -1,0 +1,55 @@
+
+> notebase-starter@0.7.0 desktop:build
+> tauri build --no-bundle
+
+        Info Looking up installed tauri packages to check mismatched versions...
+     Running beforeBuildCommand `npm run build`
+
+> notebase-starter@0.7.0 build
+> tsc --noEmit && vite build
+
+vite v7.3.7 building client environment for production...
+transforming...
+✓ 48 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                          0.35 kB │ gzip:   0.26 kB
+dist/assets/index-Bppp5qvD.css          10.10 kB │ gzip:   2.95 kB
+dist/assets/event-DJ0LsikI.js            1.38 kB │ gzip:   0.67 kB
+dist/assets/webviewWindow-y29BxUUP.js    4.95 kB │ gzip:   1.47 kB
+dist/assets/window-BGLVd_y2.js          13.71 kB │ gzip:   3.41 kB
+dist/assets/index-D-jlZ9Ja.js          686.21 kB │ gzip: 236.11 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 2.82s
+   Compiling notebase-core v0.7.0 (D:\NoteBase\repository\notebase-starter\crates\notebase-core)
+   Compiling notebase v0.7.0 (D:\NoteBase\repository\notebase-starter\src-tauri)
+error[E0597]: `shared` does not live long enough
+   --> src\main.rs:318:23
+    |
+317 |                 let shared = app.state::<Shared>();
+    |                     ------ binding `shared` declared here
+318 |                 match shared.app.lock() {
+    |                       ^^^^^^-----------
+    |                       |
+    |                       borrowed value does not live long enough
+    |                       a temporary with access to the borrow is created here ...
+...
+323 |             }
+    |             -
+    |             |
+    |             `shared` dropped here while still borrowed
+    |             ... and the borrow might be used here, when that temporary is dropped and runs the destructor for type `Result<std::sync::MutexGuard<'_, notebase_core::App>, PoisonError<std::sync::MutexGuard<'_, notebase_core::App>>>`
+    |
+help: consider adding semicolon after the expression so its temporaries are dropped sooner, before the local variables declared by the block are dropped
+    |
+322 |                 };
+    |                  +
+
+For more information about this error, try `rustc --explain E0597`.
+error: could not compile `notebase` (bin "notebase") due to 1 previous error
+failed to build app: failed to build app
+       Error failed to build app: failed to build app

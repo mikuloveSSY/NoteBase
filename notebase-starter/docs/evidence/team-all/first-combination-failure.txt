@@ -1,0 +1,52 @@
+   Compiling notebase-core v0.7.0 (D:\NoteBase\repository\notebase-starter\crates\notebase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.94s
+     Running tests\member3.rs (crates\notebase-core\target\debug\deps\member3-d22f08f124974722.exe)
+
+running 22 tests
+test preview_reuses_gfm_and_preserves_missing_wiki ... ok
+test preview_can_render_unsaved_body_without_writing ... ok
+test ambiguity_and_unresolved_are_both_reported ... ok
+test unrelated_invalid_utf8_does_not_prevent_exporting_a_valid_note ... ok
+test malicious_zip_slip_is_rejected ... ok
+test export_cannot_write_inside_vault_or_escape_through_link ... ok
+test existing_restore_target_is_never_overwritten ... ok
+test version_id_is_not_a_filesystem_path ... ok
+test html_is_single_file_with_images_and_missing_resource_report ... ok
+test corrupted_backup_does_not_partially_restore_or_create_snapshot ... ok
+test nested_note_assets_are_rebased_without_touching_code_blocks ... ok
+test original_restore_keeps_entire_former_directory ... ok
+test verify_only_is_readonly ... ok
+test markdown_copies_assets_and_does_not_overwrite ... ok
+test manual_backup_uses_configured_directory_and_allows_explicit_override ... ok
+test manual_snapshot_deduplicates_and_keeps_description ... ok
+test backup_roundtrip_is_independently_extractable_and_protects_current_vault ... ok
+test thirty_day_version_retention_and_corruption_checks ... ok
+test schedule_defaults_and_retention_respect_foreign_files ... ok
+test save_captures_old_and_new_versions_and_rollback_retains_current ... ok
+test original_restore_waits_for_index_writer_and_reopens_it ... ok
+test pdf_produces_real_document_or_explicit_platform_fallback ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.24s
+
+     Running tests\team_all.rs (crates\notebase-core\target\debug\deps\team_all-3975ae77c76b673f.exe)
+
+running 3 tests
+test long_job_releases_app_lock_rejects_writes_and_always_restores_service ... FAILED
+test mixed_settings_and_migration_preserve_backup_history_and_sync_references ... ok
+test backup_and_original_restore_stop_old_arc_restart_search_and_clear_old_baselines ... ok
+
+failures:
+
+---- long_job_releases_app_lock_rejects_writes_and_always_restores_service stdout ----
+
+thread 'long_job_releases_app_lock_rejects_writes_and_always_restores_service' (43332) panicked at tests\team_all.rs:20:40:
+note_save: AppError { code: "E_STALE_CLIENT", message: "草稿基于旧版本", detail: Object {}, retryable: false }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    long_job_releases_app_lock_rejects_writes_and_always_restores_service
+
+test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+
+error: test failed, to rerun pass `--test team_all`

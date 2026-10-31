@@ -26,6 +26,17 @@ function deferred<T>() {
 const settle = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 
 describe('EditorSession autosave and revision safety', () => {
+  it('keeps drafts and retries busy maintenance writes without a rapid retry loop', async () => {
+    let now = 0, attempts = 0;
+    const drafts: string[] = [];
+    const session = new EditorSession({now:()=>now, draft:async s=>{drafts.push(s.body);},save:async s=>{
+      attempts++; if(attempts===1)throw {code:'E_SYNC_BUSY',message:'busy',detail:{}};return saved(s);
+    }});
+    await session.switchTo(note());session.edit('keep local');now=2000;session.tick();await settle();
+    expect(attempts).toBe(1);expect(session.state.dirty).toBe(true);
+    now=2500;session.tick();await settle();expect(attempts).toBe(1);expect(drafts).toContain('keep local');
+    now=3000;session.tick();await settle();expect(attempts).toBe(2);expect(session.state.dirty).toBe(false);
+  });
   it('writes drafts on a 500ms cycle even while typing continuously', async () => {
     let now = 0;
     const drafts: SessionSnapshot[] = [];

@@ -1,0 +1,29 @@
+
+> notebase-starter@0.7.0 test:desktop
+> playwright test --config playwright.desktop.config.ts
+
+
+Running 18 tests using 1 worker
+
+(node:17224) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  1 tests\desktop\storage.spec.ts:74:1 › 真实桌面搜索中文并打开命中笔记 (7.2s)
+  ok  2 tests\desktop\storage.spec.ts:89:1 › 真实桌面读取 BOM 文件 保存并重新打开 (2.1s)
+  ok  3 tests\desktop\storage.spec.ts:107:1 › 真实桌面新建保留名 自动修正且不覆盖同名文件 (1.5s)
+  ok  4 tests\desktop\storage.spec.ts:118:1 › 真实桌面非法编码与超大文件只读预览 (8.9s)
+  ok  5 tests\desktop\storage.spec.ts:136:1 › 真实桌面拒绝覆盖外部修改 (2.6s)
+  ok  6 tests\desktop\storage.spec.ts:151:1 › 真实桌面在库外构建索引 保存后自动更新并可检索 (3.3s)
+  ok  7 tests\desktop\storage.spec.ts:176:1 › 真实桌面切换库后索引状态与数据相互隔离 (5.7s)
+  ok  8 tests\desktop\storage.spec.ts:186:1 › 真实桌面外部文件变化自动进入搜索和文件列表 (5.7s)
+  ok  9 tests\desktop\storage.spec.ts:196:1 › 真实桌面后台重建保留快照索引并恢复搜索 (3.0s)
+  ok 10 tests\desktop\storage.spec.ts:209:1 › 真实桌面迁移校验文件并保留原目录 (3.8s)
+  ok 11 tests\desktop\storage.spec.ts:224:1 › 成员二真实桌面自动保存 属性与回收站恢复 (4.7s)
+  ok 12 tests\desktop\storage.spec.ts:234:1 › 成员二真实IPC持久草稿刷新恢复 双链重命名和图数据 (1.8s)
+  ok 13 tests\desktop\storage.spec.ts:245:1 › 成员二真实窗口关闭会先冲刷未保存内容 (1.4s)
+  ok 14 tests\desktop\storage.spec.ts:252:1 › 成员四自动保存后无需重开库即可检索，日志不包含笔记正文 (4.3s)
+  ok 15 tests\desktop\storage.spec.ts:261:1 › 成员四桌面设置落盘，冲突快捷键保持旧配置 (1.6s)
+  ok 16 tests\desktop\storage.spec.ts:267:1 › 成员四第二窗口读写共享库且禁止切库，两个窗口内容不互相覆盖 (1.9s)
+  ok 17 tests\desktop\storage.spec.ts:278:1 › 全员界面原位恢复不会将恢复前编辑内容再次保存回文件 (1.8s)
+  ok 18 tests\desktop\storage.spec.ts:289:1 › 成员三真实IPC导出 快照 备份校验与新位置恢复 (3.0s)
+
+  18 passed (1.1m)

@@ -4,7 +4,7 @@
 
 - 后续所有版本迭代必须推送到 https://github.com/mikuloveSSY/NoteBase ，并维护仓库根目录 CHANGELOG.md。
 - 按当前任务指定的成员身份工作；不要把历史作者的身份视为所有协作者的身份。成员一负责 fs-store、index-store、index-worker、watcher、search-svc、路径规则、数据库结构和数据目录迁移；计划见 docs/成员一开发计划.md。
-- 当前 `integration/team-core` 承担用户授权的一二四整合，保留成员三后续接入边界；各组件归属不变。成员四原分支说明见 notebase-starter/docs/成员四交接.md。旧 AI 交接包 W1–W4 的归属不能覆盖新版四人分工方案。
+- 当前 `integration/team-all` 承担用户授权的四人成果整合；各组件归属不变。当前交付见 notebase-starter/docs/四人成果整合验收.md，原成员交接保留历史基线。旧 AI 交接包 W1–W4 的归属不能覆盖新版四人分工方案。
 
 ## 工作与交付
 

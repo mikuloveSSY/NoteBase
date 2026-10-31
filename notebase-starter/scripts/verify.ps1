@@ -1,3 +1,7 @@
+param(
+    [switch]$WithWebDavAcceptance,
+    [string]$AcceptancePython = 'python'
+)
 $ErrorActionPreference = 'Stop'
 function Check([string]$command, [string[]]$arguments) {
     & $command @arguments
@@ -14,3 +18,6 @@ $env:PLAYWRIGHT_CHANNEL = 'msedge'
 Check npm @('run','test:e2e','--','--workers=1')
 Check npm @('run','desktop:build','--','--no-bundle')
 Check npm @('run','test:desktop')
+if ($WithWebDavAcceptance) {
+    Check $AcceptancePython @('scripts/accept_member3_webdav.py')
+}

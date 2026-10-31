@@ -10,6 +10,8 @@ import { mountShell } from './shell-ui';
 import { restoreWorkspace, type Preferences } from './preferences';
 import './style.css';
 import './shell.css';
+import './member3.css';
+import { mountDataTools } from './member3';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = [
   '<aside><div class="brand"><b>N</b><div>NoteBase<small>本地优先 · Markdown</small></div></div>',
@@ -98,6 +100,7 @@ function sync(s: SessionState) {
   if (s.conflict) { const key = s.path + ':' + s.conflict.diskHash; $('conflictMessage').textContent = s.conflict.message; if (key !== conflictKey) { conflictKey = key; $<HTMLDialogElement>('conflictDialog').showModal(); } }
   else { conflictKey = ''; $<HTMLDialogElement>('conflictDialog').close(); }
   update();
+  window.dispatchEvent(new Event('notebase:editor-change'));
 }
 async function run(fn: () => Promise<void>) {
   if (busy) return; busy = true; update();
@@ -187,7 +190,7 @@ async function open() {
     for (const path of restored.tabs) tabs.add(path);
     if (restored.active) { try { await read(restored.active); } catch { tabs.delete(restored.active); } }
   } finally { restoringWorkspace = false; renderTabs(); }
-  status('笔记库已打开'); void loadRecovery(); void loadTemplates();
+  status('笔记库已打开'); window.dispatchEvent(new Event('notebase:vault-opened')); void loadRecovery(); void loadTemplates();
 }
 async function migrate() {
   const target = prompt('迁移到新的绝对目录（目标必须不存在）。校验后切换，原目录会完整保留。');
@@ -198,7 +201,16 @@ async function migrate() {
   const settings = await vaultCall<{ values: VaultSettings }>('settings_get', { keys: ['vaultPath'] });
   $<HTMLInputElement>('vaultPath').value = settings.values.vaultPath ?? target;
   vaultIdentity = $<HTMLInputElement>('vaultPath').value;
-  await list(); status('迁移完成，已切换到新目录；原目录完整保留。'); void loadRecovery(); void loadTemplates();
+  await list(); status('迁移完成，已切换到新目录；原目录完整保留。'); window.dispatchEvent(new Event('notebase:vault-opened')); void loadRecovery(); void loadTemplates();
+}
+async function prepareRestore() {
+  switching = true; update();
+  if (!await session.close()) { switching = false; update(); return false; }
+  return true;
+}
+async function reloadRestoredVault() {
+  // Restore has already changed disk. Do not flush stale editor text over it.
+  await open();
 }
 async function save() { if (!active || active.readOnly || switching) return; if (await session.save()) void loadLinks(); }
 function fillProperties(note: NoteContent) {
@@ -364,7 +376,7 @@ $('graphRefresh').addEventListener('click', () => void loadGraph()); $('graphZoo
 
 // Browsers cannot await unload. Start flush and retain the native unsaved-changes guard.
 window.addEventListener('beforeunload', e => { if (session.state.dirty || session.state.paused || session.state.saving) { void session.flush(); e.preventDefault(); e.returnValue = ''; } });
-if (desktopMode) { void import('@tauri-apps/api/window').then(({ getCurrentWindow }) => { const win = getCurrentWindow(); let closing = false; return win.onCloseRequested(async e => { if (closing) return; e.preventDefault(); if (busy || !await flush()) return; persistWorkspace(); closing = true; await win.close(); }); }).catch(error => status('窗口关闭保护不可用：' + message(error), true)); }
+if (desktopMode) { void import('@tauri-apps/api/window').then(({ getCurrentWindow }) => { const win = getCurrentWindow(); let closing = false; return win.onCloseRequested(async e => { if (closing) return; e.preventDefault(); if (busy || !await flush()) return; try { if (opened) await vaultCall('vault_info'); } catch (error) { status(message(error), true); return; } persistWorkspace(); closing = true; await win.close(); }); }).catch(error => status('窗口关闭保护不可用：' + message(error), true)); }
 window.setInterval(() => { if (opened && !switching) session.tick(); }, 100);
 window.setInterval(() => { if (opened && active && !switching) void session.checkExternal(); }, 2000);
 // Search snippets contain escaped text and exact <b> markers. Only create text and mark nodes.
@@ -426,10 +438,11 @@ if (desktopMode) {
     await listen<{ path?: string; source?: string; contentHash?: string | null }>(transportEventName('note.changed'), event => {
       externalTreeDirty = true;
       // App saves also emit note.changed. Hash probing, with EditorSession's saving guard, decides conflicts.
-      if (opened && !switching && event.payload.source === 'external' && active?.path === event.payload.path && event.payload.contentHash !== session.state.baseHash) { status('磁盘文件已变化，正在核对当前编辑版本。'); void session.checkExternal(); }
+      if (opened && !switching && event.payload.source === 'external' && !!active && (!event.payload.path || active.path === event.payload.path) && event.payload.contentHash !== session.state.baseHash) { status('磁盘文件已变化，正在核对当前编辑版本。'); void session.checkExternal(); }
     });
     await listen<{ code: string; message: string; detail?: { recoveryDir?: string } }>(transportEventName('error.raised'), event => {
       if (event.payload.code === 'E_INDEX_UNAVAILABLE') { $('indexWarning').hidden = false; $('indexWarning').textContent = event.payload.message + (event.payload.detail?.recoveryDir ? ' · 原件归档：' + event.payload.detail.recoveryDir : ''); }
+      else status(event.payload.message, true);
     });
   }).catch(error => status('实时事件监听不可用：' + message(error), true));
   void call<{ values: VaultSettings }>('settings_get', { keys: ['vaultPath'] }).then(result => { if (!opened && !switching && !$<HTMLInputElement>('vaultPath').value && result.values.vaultPath) $<HTMLInputElement>('vaultPath').value = result.values.vaultPath; }).catch(() => {});
@@ -449,6 +462,7 @@ async function pollIndex() {
   }
   window.setTimeout(() => void pollIndex(), 1000);
 }
+mountDataTools({desktop:desktopMode,note:()=>active,body:()=>view.state.doc.toString(),call:vaultCall,flush,read,prepareRestore,reload:reloadRestoredVault,run,status});
 
 function workspaceKey() { return 'notebase-workspace:' + windowLabel + ':' + vaultIdentity; }
 function persistWorkspace() {

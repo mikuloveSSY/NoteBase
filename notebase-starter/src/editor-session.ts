@@ -41,6 +41,7 @@ export class EditorSession {
   private probeJob: Promise<void> | null = null;
   private resolving = false;
   private generation = 0;
+  private retryAfter = 0;
   constructor(private readonly options: Options) {}
   private now() { return this.options.now?.() ?? Date.now(); }
   get state(): SessionState {
@@ -56,6 +57,7 @@ export class EditorSession {
     return job;
   }
   private load(note: NoteContent | null) {
+    this.retryAfter = 0;
     this.generation++; this.note = note; this.body = note?.body ?? ''; this.revision = this.committed = 0;
     this.firstDirtyAt = this.afterSnapshotAt = null; this.lastInputAt = this.lastDraftAt = this.now(); this.draftRevision = -1;
     this.paused = !!note?.conflictPaused; this.externalDeleted = false; this.error = null; this.lastSave = null;
@@ -88,7 +90,7 @@ export class EditorSession {
         catch (error) { this.reportError(error); }
       }).finally(() => { this.draftJob = null; });
     }
-    if (!this.paused && !this.saveJob && (now - this.lastInputAt >= 2000 || (this.firstDirtyAt !== null && now - this.firstDirtyAt >= 10000))) void this.save();
+    if (!this.paused && !this.saveJob && now >= this.retryAfter && (now - this.lastInputAt >= 2000 || (this.firstDirtyAt !== null && now - this.firstDirtyAt >= 10000))) void this.save();
   }
   save(): Promise<boolean> {
     if (this.saveJob) return this.saveJob;
@@ -104,7 +106,10 @@ export class EditorSession {
         this.committed = snapshot.revision; this.lastSave = result; this.error = null;
         this.firstDirtyAt = this.state.dirty ? this.afterSnapshotAt ?? this.lastInputAt : null;
         return true;
-      } catch (error) { this.reportError(error); return false; }
+      } catch (error) {
+        if (['E_SYNC_BUSY','E_CANCELLED'].includes((error as {code?:string})?.code ?? '')) this.retryAfter = this.now() + 1000;
+        this.reportError(error); return false;
+      }
       finally { this.submittedRevision = -1; }
     }).finally(() => { this.saveJob = null; this.emit(); });
     this.emit(); return this.saveJob;

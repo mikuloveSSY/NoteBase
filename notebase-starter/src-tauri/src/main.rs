@@ -4,12 +4,29 @@ use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager, State};
 mod shortcut;
 struct Shell {
+    shutting_down: std::sync::atomic::AtomicBool,
     app: Mutex<App>,
     logger: notebase_core::logger::Logger,
     shortcut: shortcut::GlobalShortcut,
     handle: tauri::AppHandle,
 }
 type Shared = Arc<Shell>;
+fn execute_data_task(
+    app: &Shared,
+    mut task: notebase_core::application::DataTask,
+) -> notebase_core::domain::Result<serde_json::Value> {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| task.run()))
+        .unwrap_or_else(|_| {
+            Err(notebase_core::domain::AppError::new(
+                "E_INTERNAL",
+                "数据任务异常结束",
+            ))
+        });
+    app.app
+        .lock()
+        .map_err(|_| notebase_core::domain::AppError::new("E_INTERNAL", "应用状态锁异常"))?
+        .finish_data_task(task, result)
+}
 async fn dispatch(expected: &str, request: Request, app: Shared) -> Response {
     if request.command != expected {
         return Response::Err {
@@ -20,6 +37,23 @@ async fn dispatch(expected: &str, request: Request, app: Shared) -> Response {
     }
     let id = request.id.clone();
     match tauri::async_runtime::spawn_blocking(move || {
+        if matches!(request.command.as_str(), "export_note" | "backup_restore" | "sync_now") || (request.command == "backup_create" && request.payload["scope"] != "note") {
+            let prepared = match app.app.lock() {
+                Ok(mut core) => {
+                    if app.shutting_down.load(std::sync::atomic::Ordering::Acquire) {
+                        return Response::Err { id:request.id,ok:false,error:notebase_core::domain::AppError::new("E_CANCELLED","应用正在退出") };
+                    }
+                    if request.command == "backup_restore" && request.payload["verifyOnly"] != true && app.handle.webview_windows().len() > 1 {
+                        Err(notebase_core::domain::AppError::new("E_CANCELLED", "恢复前请先保存并关闭其他窗口"))
+                    } else { core.begin_data_task(&request.command, &request.payload) }
+                }
+                Err(_) => Err(notebase_core::domain::AppError::new("E_INTERNAL", "应用状态锁异常")),
+            };
+            let result = prepared.and_then(|task| execute_data_task(&app, task));
+            let code = result.as_ref().err().map(|error| error.code.as_str());
+            let _ = app.logger.record("app-shell", &request.command, code);
+            return match result { Ok(data) => Response::Ok { id:request.id,ok:true,data }, Err(error) => Response::Err { id:request.id,ok:false,error } };
+        }
         if request.command == "search" {
             let session = match app.app.lock() {
                 Ok(core) => core.search_session(),
@@ -39,6 +73,7 @@ async fn dispatch(expected: &str, request: Request, app: Shared) -> Response {
         match app.app.lock() {
         Ok(mut core) => {
             let failure = |code: &str, message: &str| Response::Err { id: request.id.clone(), ok: false, error: notebase_core::domain::AppError::new(code, message) };
+            if core.data_task_active() && request.command == "settings_set" { return failure("E_CANCELLED", "后台任务执行中，请稍后修改设置"); }
             if app.handle.webview_windows().len()>1 && (request.command=="vault_open" || (request.command=="settings_set" && request.payload["values"].get("vaultPath").is_some())) {
                 let info=core.dispatch(Request{id:"shell-vault".into(),command:"vault_info".into(),payload:serde_json::json!({}),client_seq:0});
                 let same=matches!(info,Response::Ok{data,..} if request.command=="vault_open" && data["vaultPath"]==request.payload["path"]);
@@ -177,12 +212,40 @@ fn main() {
                     let _ = logger.record("app-shell", "shortcut", Some("E_KEYMAP_CONFLICT"));
                 }
             }
-            app.manage(Arc::new(Shell {
+            let shared = Arc::new(Shell {
+                shutting_down: std::sync::atomic::AtomicBool::new(false),
                 app: Mutex::new(core),
                 logger,
                 shortcut,
                 handle: app.handle().clone(),
-            }));
+            });
+            let weak = Arc::downgrade(&shared);
+            std::thread::spawn(move || loop {
+                std::thread::sleep(std::time::Duration::from_secs(60));
+                let Some(shared) = weak.upgrade() else {
+                    break;
+                };
+                for sync in [false, true] {
+                    let prepared = match shared.app.try_lock() {
+                        Ok(mut core) => {
+                            if shared.shutting_down.load(std::sync::atomic::Ordering::Acquire) { break; }
+                            core.next_background_task(notebase_core::index::now_ms(), sync)
+                        }
+                        Err(_) => continue,
+                    };
+                    let result = prepared.and_then(|task| {
+                        task.map(|task| execute_data_task(&shared, task))
+                            .transpose()
+                    });
+                    if let Err(error) = result {
+                        let _ = shared.handle.emit(
+                            "notebase:error_raised",
+                            serde_json::json!({"code":error.code,"message":error.message}),
+                        );
+                    }
+                }
+            });
+            app.manage(shared);
             use tauri::menu::{MenuBuilder, SubmenuBuilder};
             let file = SubmenuBuilder::new(app, "文件")
                 .text("new", "新建笔记")
@@ -198,6 +261,19 @@ fn main() {
                 .build()?;
             app.set_menu(MenuBuilder::new(app).item(&file).item(&view).build()?)?;
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if let Some(shared) = window.app_handle().try_state::<Shared>() {
+                    if let Ok(core) = shared.app.lock() {
+                        if core.data_task_active() {
+                            core.request_data_task_cancel();
+                            api.prevent_close();
+                            let _ = window.emit("notebase:error_raised", serde_json::json!({"code":"E_CANCELLED","message":"正在取消后台任务；完成文件核对后可再次关闭窗口"}));
+                        }
+                    }
+                }
+            }
         })
         .on_menu_event(|app, event| {
             if let Some(window) = app
@@ -234,6 +310,16 @@ fn main() {
             settings_get,
             settings_set
         ])
-        .run(tauri::generate_context!())
-        .expect("启动 NoteBase 失败");
+        .build(tauri::generate_context!())
+        .expect("启动 NoteBase 失败")
+        .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                let shared = app.state::<Shared>();
+                match shared.app.lock() {
+                    Ok(core) if core.data_task_active() => { core.request_data_task_cancel(); api.prevent_exit(); }
+                    Ok(_) => shared.shutting_down.store(true, std::sync::atomic::Ordering::Release),
+                    Err(_) => api.prevent_exit(),
+                };
+            }
+        });
 }

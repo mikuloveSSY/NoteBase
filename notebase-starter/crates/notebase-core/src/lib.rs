@@ -1,4 +1,5 @@
 pub mod application;
+pub mod data_services;
 pub mod domain;
 pub mod index;
 pub mod infra;
@@ -25,8 +26,9 @@ pub fn new_local_app() -> App {
 }
 /// Persistent drafts and rename recovery, without requiring an index session.
 pub fn new_stateful_app(data_root: std::path::PathBuf) -> App {
-    App::new(Box::new(|path| Ok(Box::new(infra::FsStore::open(path)?)))).with_support(Box::new(
-        move |vault, id| {
+    let service_root = data_root.clone();
+    App::new(Box::new(|path| Ok(Box::new(infra::FsStore::open(path)?))))
+        .with_support(Box::new(move |vault, id| {
             let root = note_files::private_state_root(&data_root, vault, id)?;
             Ok((
                 Box::new(note_files::FsNoteFiles::open(vault)?),
@@ -35,8 +37,15 @@ pub fn new_stateful_app(data_root: std::path::PathBuf) -> App {
                     Err(error) => Box::new(UnavailableState(error.message)),
                 },
             ))
-        },
-    ))
+        }))
+        .with_data(Box::new(move |vault, id| {
+            Ok(
+                match data_services::LocalDataService::open(vault, &service_root, id) {
+                    Ok(service) => Box::new(service) as Box<dyn data_services::DataService>,
+                    Err(error) => Box::new(UnavailableData(error.message)),
+                },
+            )
+        }))
 }
 pub fn new_indexed_app(data_root: std::path::PathBuf, events: index::worker::EventSink) -> App {
     let settings = data_root.join("settings.json");
@@ -81,5 +90,59 @@ impl note_state::NoteStateStore for UnavailableState {
             "E_IO_PERMISSION",
             format!("恢复存储不可用：{}", self.0),
         ))
+    }
+}
+
+struct UnavailableData(String);
+impl UnavailableData {
+    fn error<T>(&self) -> domain::Result<T> {
+        Err(domain::AppError::new(
+            "E_IO_PERMISSION",
+            format!("数据保障存储不可用：{}", self.0),
+        ))
+    }
+}
+impl data_services::DataService for UnavailableData {
+    fn prune_versions(&self, _: u64) -> domain::Result<usize> {
+        self.error()
+    }
+    fn sync_configure(&self, _: &serde_json::Value) -> domain::Result<serde_json::Value> {
+        self.error()
+    }
+    fn sync_now(&self, _: &serde_json::Value) -> domain::Result<serde_json::Value> {
+        self.error()
+    }
+    fn sync_status(&self) -> domain::Result<serde_json::Value> {
+        self.error()
+    }
+    fn export(&self, _: &serde_json::Value) -> domain::Result<serde_json::Value> {
+        self.error()
+    }
+    fn backup_create(&self, _: &serde_json::Value) -> domain::Result<serde_json::Value> {
+        self.error()
+    }
+    fn backup_restore(&self, _: &serde_json::Value) -> domain::Result<serde_json::Value> {
+        self.error()
+    }
+    fn versions(&self, _: &serde_json::Value) -> domain::Result<serde_json::Value> {
+        self.error()
+    }
+    fn version_body(&self, _: &serde_json::Value) -> domain::Result<String> {
+        self.error()
+    }
+    fn snapshot(&self, _: &str, _: &[u8], _: &str) -> domain::Result<serde_json::Value> {
+        self.error()
+    }
+    fn settings(&self) -> domain::Result<serde_json::Value> {
+        self.error()
+    }
+    fn configure(&self, _: &serde_json::Value) -> domain::Result<serde_json::Value> {
+        self.error()
+    }
+    fn maintenance(&self, _: u64) -> domain::Result<serde_json::Value> {
+        self.error()
+    }
+    fn maintenance_due(&self, _: u64) -> domain::Result<bool> {
+        self.error()
     }
 }

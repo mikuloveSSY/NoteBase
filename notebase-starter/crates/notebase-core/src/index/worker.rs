@@ -57,7 +57,8 @@ pub struct BackgroundIndex {
     cancelled: Arc<AtomicBool>,
     refresh: SyncSender<()>,
     events: EventSink,
-    worker: Option<thread::JoinHandle<()>>,
+    worker: Mutex<Option<thread::JoinHandle<()>>>,
+    queries: std::sync::RwLock<()>,
 }
 
 /// 检查既有父目录的真实位置后再创建缓存；拒绝把应用数据放入当前笔记库。
@@ -252,22 +253,20 @@ impl BackgroundIndex {
             cancelled,
             refresh,
             events,
-            worker,
+            worker: Mutex::new(worker),
+            queries: std::sync::RwLock::new(()),
         }
     }
     /// 测试/显式关闭入口；普通切库只发取消信号，不在 App 全局锁内等待扫描结束。
-    pub fn shutdown(mut self) {
-        self.deactivate();
-        let (dummy, _) = mpsc::sync_channel(1);
-        drop(std::mem::replace(&mut self.refresh, dummy));
-        if let Some(worker) = self.worker.take() {
-            let _ = worker.join();
-        }
+    pub fn shutdown(self) {
+        let _ = self.suspend();
     }
     fn deactivate(&self) {
         self.cancelled.store(true, Ordering::Release);
         if let Ok(mut state) = self.state.lock() {
             state.active = false;
+            state.status.state = IndexState::Unavailable;
+            state.status.progress = None;
         }
     }
 }
@@ -277,6 +276,24 @@ impl Drop for BackgroundIndex {
     }
 }
 impl IndexSession for BackgroundIndex {
+    fn suspend(&self) -> Result<()> {
+        self.deactivate();
+        let _queries = self
+            .queries
+            .write()
+            .map_err(|_| unavailable("查询生命周期锁异常"))?;
+        let worker = self
+            .worker
+            .lock()
+            .map_err(|_| unavailable("索引线程锁异常"))?
+            .take();
+        if let Some(worker) = worker {
+            worker
+                .join()
+                .map_err(|_| unavailable("索引线程关闭失败，拒绝恢复"))?;
+        }
+        Ok(())
+    }
     fn cancel(&self) {
         self.deactivate();
     }
@@ -288,6 +305,8 @@ impl IndexSession for BackgroundIndex {
         if !state.active
             || self
                 .worker
+                .lock()
+                .unwrap()
                 .as_ref()
                 .is_none_or(|worker| worker.is_finished())
         {
@@ -327,6 +346,8 @@ impl IndexSession for BackgroundIndex {
         if !state.active
             || self
                 .worker
+                .lock()
+                .unwrap()
                 .as_ref()
                 .is_none_or(|worker| worker.is_finished())
         {
@@ -347,6 +368,10 @@ impl IndexSession for BackgroundIndex {
         true
     }
     fn search(&self, query: &Value) -> Result<Value> {
+        let _query = self
+            .queries
+            .read()
+            .map_err(|_| unavailable("查询生命周期锁异常"))?;
         let generation = {
             let state = self
                 .state
@@ -406,7 +431,12 @@ impl IndexSession for BackgroundIndex {
             .map(|s| s.status.clone())
             .unwrap_or_default();
         if self.full_rebuild.load(Ordering::Acquire)
-            && self.worker.as_ref().is_some_and(|w| !w.is_finished())
+            && self
+                .worker
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_some_and(|w| !w.is_finished())
         {
             status.state = IndexState::Rebuilding;
         }

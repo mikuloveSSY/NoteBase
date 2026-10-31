@@ -49,7 +49,9 @@ const test = base.extend<{ desktopPage: Page; vault: string }>({
       const context = browser.contexts()[0];
       await expect.poll(() => context.pages().length).toBeGreaterThan(0);
       const page = context.pages()[0];
-      await expect(page.locator('#mode')).toContainText('桌面模式');
+      page.on('pageerror', error => { diagnostics += `\n${error.stack ?? error.message}`; });
+      page.on('console', message => { if (message.type() === 'error') diagnostics += `\n${message.text()}`; });
+      await expect(page.locator('#mode')).toContainText('桌面模式', { timeout: 30_000 }).catch(error => { throw new Error(String(error) + diagnostics); });
       await use(page);
       if(!page.isClosed()) await page.screenshot({ path: testInfo.outputPath('desktop.png'), fullPage: true });
     } finally {
@@ -270,4 +272,28 @@ test('成员四第二窗口读写共享库且禁止切库，两个窗口内容�
  expect((await invokeCore(page,'note_save',{path:'Shared.md',body:'first window',baseHash:before.data.contentHash,clientId:'window-one',clientSeq:1})).ok).toBe(true);
  expect((await invokeCore(second,'note_save',{path:'Shared.md',body:'second overwrite',baseHash:other.data.contentHash,clientId:'window-two',clientSeq:1})).ok).toBe(false);expect(await readFile(resolve(vault,'Shared.md'),'utf8')).toBe('first window');
  const target=testInfo.outputPath('another');await mkdir(target);const blocked=await invokeCore(second,'vault_open',{path:target});expect(blocked.ok).toBe(false);expect(blocked.error.code).toBe('E_CANCELLED');
+ const restoreBlocked=await invokeCore(second,'backup_restore',{filePath:testInfo.outputPath('not-used.zip'),mode:'original'});expect(restoreBlocked.ok).toBe(false);expect(restoreBlocked.error.code).toBe('E_CANCELLED');expect(await readFile(resolve(vault,'Shared.md'),'utf8')).toBe('first window');
+});
+
+test('全员界面原位恢复不会将恢复前编辑内容再次保存回文件',async({desktopPage:page,vault},testInfo)=>{
+ const path=resolve(vault,'Restore.md');await writeFile(path,'原位恢复基线');await openVault(page,vault);await page.getByRole('button',{name:'Restore.md',exact:true}).click();
+ const backup=await invokeCore(page,'backup_create',{});expect(backup.ok).toBe(true);
+ await page.locator('.cm-content').click();await page.keyboard.press('Control+End');await page.keyboard.insertText(' 恢复前追加');await page.keyboard.press('Control+s');
+ await expect.poll(()=>readFile(path,'utf8')).toContain('恢复前追加');await expect(page.locator('#dirty')).toHaveText('已保存');
+ await page.locator('#restoreFile').fill(backup.data.filePath);await page.locator('#restoreMode').selectOption('original');page.once('dialog',dialog=>dialog.accept());await page.locator('#restoreRun').click();
+ await expect.poll(()=>readFile(path,'utf8')).toBe('原位恢复基线');await expect(page.locator('#status')).toHaveText('笔记库已打开');
+ await page.getByRole('button',{name:'Restore.md',exact:true}).click();await expect(page.locator('.cm-content')).toHaveText('原位恢复基线');
+ const retained=(await readdir(testInfo.outputPath())).filter(name=>name.startsWith('notebase-before-restore-'));expect(retained).toHaveLength(1);expect(await readFile(resolve(testInfo.outputPath(),retained[0],'Restore.md'),'utf8')).toContain('恢复前追加');
+});
+
+test('成员三真实IPC导出 快照 备份校验与新位置恢复',async({desktopPage:page,vault},testInfo)=>{
+ const body='# 真实成员三\n备份恢复内容';await writeFile(resolve(vault,'A.md'),body);await openVault(page,vault);
+ const preview=await invokeCore(page,'export_note',{path:'A.md',preview:true,format:'html',body});expect(preview.ok).toBe(true);expect(preview.data.html).toContain('真实成员三');
+ const html=testInfo.outputPath('export.html');const exported=await invokeCore(page,'export_note',{path:'A.md',format:'html',targetPath:html});expect(exported.ok).toBe(true);expect(await readFile(html,'utf8')).toContain('真实成员三');
+ const pdf=testInfo.outputPath('export.pdf');const printed=await invokeCore(page,'export_note',{path:'A.md',format:'pdf',targetPath:pdf});expect(printed.ok).toBe(true);expect((await readFile(pdf)).subarray(0,5).toString()).toBe('%PDF-');
+ const snapshot=await invokeCore(page,'backup_create',{scope:'note',path:'A.md'});expect(snapshot.ok).toBe(true);
+ const versions=await invokeCore(page,'note_list',{scope:'versions',path:'A.md'});expect(versions.ok).toBe(true);expect(versions.data.items.length).toBeGreaterThan(0);
+ const backup=await invokeCore(page,'backup_create',{});expect(backup.ok).toBe(true);
+ const verified=await invokeCore(page,'backup_restore',{filePath:backup.data.filePath,verifyOnly:true});expect(verified.ok).toBe(true);expect(verified.data.verified).toBe(true);
+ const target=testInfo.outputPath('restored');const restored=await invokeCore(page,'backup_restore',{filePath:backup.data.filePath,mode:'new',targetPath:target});expect(restored.ok).toBe(true);expect(await readFile(resolve(target,'A.md'),'utf8')).toBe(body);expect(await readFile(resolve(vault,'A.md'),'utf8')).toBe(body);
 });

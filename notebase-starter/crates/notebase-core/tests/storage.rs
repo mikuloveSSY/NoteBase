@@ -99,7 +99,17 @@ fn failed_rename_and_missing_parent_leave_source_untouched() {
 #[test]
 fn full_path_limit_is_checked_before_creating_a_file() {
     let (dir, store) = setup();
-    let name = format!("{}.md", "x".repeat(240));
+    // Target the actual full-path boundary instead of assuming a long Windows TEMP path.
+    let root = fs::canonicalize(dir.path())
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let logical = root
+        .strip_prefix(r"\\?\UNC\")
+        .map(|p| format!(r"\\{p}"))
+        .unwrap_or_else(|| root.strip_prefix(r"\\?\").unwrap_or(&root).to_owned());
+    let count = 260usize.saturating_sub(logical.encode_utf16().count() + 1 + 3);
+    let name = format!("{}.md", "x".repeat(count));
     let error = AppError::from(store.create_new(&path(&name)).unwrap_err());
     assert_eq!(error.code, "E_PATH_INVALID");
     assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);
