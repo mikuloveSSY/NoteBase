@@ -1,0 +1,4 @@
+    Checking libsqlite3-sys v0.39.1
+    Checking rusqlite v0.41.0
+    Checking notebase-core v0.7.0 (D:\NoteBase\repository\notebase-starter\crates\notebase-core)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 6.20s

@@ -26,6 +26,8 @@ pub struct WorkerOptions {
     pub reconcile_interval: Duration,
     pub debounce: Duration,
     pub queue_capacity: usize,
+    #[cfg(test)]
+    pub reconcile_test_delay: Duration,
 }
 impl Default for WorkerOptions {
     fn default() -> Self {
@@ -34,6 +36,8 @@ impl Default for WorkerOptions {
             reconcile_interval: Duration::from_secs(300),
             debounce: Duration::from_millis(150),
             queue_capacity: super::queue::QUEUE_CAPACITY,
+            #[cfg(test)]
+            reconcile_test_delay: Duration::ZERO,
         }
     }
 }
@@ -43,6 +47,7 @@ struct State {
     active: bool,
 }
 pub struct BackgroundIndex {
+    readers: Arc<Mutex<Option<std::sync::Weak<SqliteIndexStore>>>>,
     full_rebuild: Arc<AtomicBool>,
     rebuild_pending: Arc<Mutex<Option<String>>>,
     vault: String,
@@ -52,7 +57,8 @@ pub struct BackgroundIndex {
     cancelled: Arc<AtomicBool>,
     refresh: SyncSender<()>,
     events: EventSink,
-    worker: Option<thread::JoinHandle<()>>,
+    worker: Mutex<Option<thread::JoinHandle<()>>>,
+    queries: std::sync::RwLock<()>,
 }
 
 /// 检查既有父目录的真实位置后再创建缓存；拒绝把应用数据放入当前笔记库。
@@ -121,6 +127,8 @@ impl BackgroundIndex {
         options: WorkerOptions,
     ) -> Self {
         let vault_path = vault.clone();
+        let readers = Arc::new(Mutex::new(None));
+        let worker_readers = readers.clone();
         let full_rebuild = Arc::new(AtomicBool::new(true));
         let full_rebuild_worker = full_rebuild.clone();
         let rebuild_pending = Arc::new(Mutex::new(None));
@@ -163,7 +171,7 @@ impl BackgroundIndex {
                         }
                     };
                     if let Some(archive)=&recovered.archived{if state2.lock().unwrap().active{events2("error.raised",json!({"code":"E_INDEX_UNAVAILABLE","message":"原索引已归档并重新构建；请核对历史业务状态","detail":{"recoveryDir":archive,"businessRestored":recovered.business_restored}}));}}
-                    let index=recovered.store;
+                    let index=Arc::new(recovered.store);*worker_readers.lock().unwrap()=Some(Arc::downgrade(&index));
                     let store = FsStore::open(&vault)?;
                     let watcher_failed=Arc::new(AtomicBool::new(false));
                     let mut watcher=if options.native_watch{
@@ -172,10 +180,9 @@ impl BackgroundIndex {
                         }
                     }else{work_queue.reconcile(Some("原生监听已禁用，使用周期对账".into()));None};
                     if index.needs_rebuild{
-                        if let Err(error)=staged_build(&index,&path,&vault_id,&store,&state2,&cancel2,&events2){report_error(&state2,&events2,error);}
-                    }else{let mut state=state2.lock().unwrap();state.status=index.status()?;emit_state(&state,&events2);}
+                        if let Err(error)=staged_build(&index,&path,&vault_id,&store,&state2,&cancel2,&events2){report_error(&state2,&events2,error);work_queue.reconcile(None);}
+                    }else{let mut state=state2.lock().unwrap();state.status=index.status()?;emit_state(&state,&events2);work_queue.reconcile(None);}
                     full_rebuild_worker.store(false,Ordering::Release);
-                    work_queue.reconcile(None);
                     let mut invalid=std::collections::BTreeSet::new();let mut last_reconcile=Instant::now();
                     loop {
                         if cancel2.load(Ordering::Acquire) {
@@ -183,9 +190,11 @@ impl BackgroundIndex {
                         }
                         let request=rebuild_requests.lock().unwrap().take();
                         if request.is_some(){
-                            if let Err(error)=staged_build(&index,&path,&vault_id,&store,&state2,&cancel2,&events2){report_error(&state2,&events2,error);}
+                            #[cfg(test)]
+                            thread::sleep(options.reconcile_test_delay);
+                            if let Err(error)=staged_build(&index,&path,&vault_id,&store,&state2,&cancel2,&events2){report_error(&state2,&events2,error);work_queue.reconcile(None);}
                             full_rebuild_worker.store(false,Ordering::Release);
-                            work_queue.reconcile(None);
+                            last_reconcile=Instant::now();
                         }
                         if watcher_failed.swap(false,Ordering::AcqRel){watcher=None;}
                         if last_reconcile.elapsed()>=options.reconcile_interval{work_queue.reconcile(None);last_reconcile=Instant::now();}
@@ -193,13 +202,14 @@ impl BackgroundIndex {
                             let full=work.reconcile;
                             if let Some(warning)=&work.warning{let state=state2.lock().unwrap();if state.active{events2("error.raised",json!({"code":"E_INDEX_UNAVAILABLE","message":warning,"detail":{"pollIntervalMs":options.reconcile_interval.as_millis() as u64}}));}}
                             {let mut state=state2.lock().unwrap();state.status.state=IndexState::Rebuilding;state.generation+=1;emit_state(&state,&events2);}
-                            if full{last_reconcile=Instant::now();}
+                            #[cfg(test)]
+                            if full{thread::sleep(options.reconcile_test_delay);}
                             match super::incremental::apply(&index,&store,work,&mut invalid,&cancel2){
                                 Ok(changes)=>{
                                     let mut state=state2.lock().unwrap();
                                     if !state.active||cancel2.load(Ordering::Acquire){return Ok(());}
                                     if invalid.is_empty()&&!work_queue.pending(){index.finish_increment(full)?;}else{index.mark_offline()?;}
-                                    state.status=index.status()?;emit_state(&state,&events2);
+                                    state.status=index.status()?;if full{last_reconcile=Instant::now();}emit_state(&state,&events2);
                                     for change in changes{if change.source==super::queue::Source::External{events2("note.changed",json!({"path":change.path,"source":"external","contentHash":change.hash}));}}
                                 },
                                 Err(error)=>{let _=index.mark_offline();report_error(&state2,&events2,error);last_reconcile=Instant::now().checked_sub(options.reconcile_interval.saturating_sub(Duration::from_secs(1))).unwrap_or_else(Instant::now);},
@@ -233,6 +243,7 @@ impl BackgroundIndex {
             }
         };
         Self {
+            readers,
             full_rebuild,
             rebuild_pending,
             vault: vault_path,
@@ -242,22 +253,20 @@ impl BackgroundIndex {
             cancelled,
             refresh,
             events,
-            worker,
+            worker: Mutex::new(worker),
+            queries: std::sync::RwLock::new(()),
         }
     }
     /// 测试/显式关闭入口；普通切库只发取消信号，不在 App 全局锁内等待扫描结束。
-    pub fn shutdown(mut self) {
-        self.deactivate();
-        let (dummy, _) = mpsc::sync_channel(1);
-        drop(std::mem::replace(&mut self.refresh, dummy));
-        if let Some(worker) = self.worker.take() {
-            let _ = worker.join();
-        }
+    pub fn shutdown(self) {
+        let _ = self.suspend();
     }
     fn deactivate(&self) {
         self.cancelled.store(true, Ordering::Release);
         if let Ok(mut state) = self.state.lock() {
             state.active = false;
+            state.status.state = IndexState::Unavailable;
+            state.status.progress = None;
         }
     }
 }
@@ -267,6 +276,27 @@ impl Drop for BackgroundIndex {
     }
 }
 impl IndexSession for BackgroundIndex {
+    fn suspend(&self) -> Result<()> {
+        self.deactivate();
+        let _queries = self
+            .queries
+            .write()
+            .map_err(|_| unavailable("查询生命周期锁异常"))?;
+        let worker = self
+            .worker
+            .lock()
+            .map_err(|_| unavailable("索引线程锁异常"))?
+            .take();
+        if let Some(worker) = worker {
+            worker
+                .join()
+                .map_err(|_| unavailable("索引线程关闭失败，拒绝恢复"))?;
+        }
+        Ok(())
+    }
+    fn cancel(&self) {
+        self.deactivate();
+    }
     fn rebuild(&self) -> Result<String> {
         let mut state = self
             .state
@@ -275,6 +305,8 @@ impl IndexSession for BackgroundIndex {
         if !state.active
             || self
                 .worker
+                .lock()
+                .unwrap()
                 .as_ref()
                 .is_none_or(|worker| worker.is_finished())
         {
@@ -314,6 +346,8 @@ impl IndexSession for BackgroundIndex {
         if !state.active
             || self
                 .worker
+                .lock()
+                .unwrap()
                 .as_ref()
                 .is_none_or(|worker| worker.is_finished())
         {
@@ -334,20 +368,35 @@ impl IndexSession for BackgroundIndex {
         true
     }
     fn search(&self, query: &Value) -> Result<Value> {
+        let _query = self
+            .queries
+            .read()
+            .map_err(|_| unavailable("查询生命周期锁异常"))?;
         let generation = {
             let state = self
                 .state
                 .lock()
                 .map_err(|_| unavailable("索引状态锁异常"))?;
-            if state.status.state != IndexState::Ready
-                && state.status.state != IndexState::Rebuilding
+            if !state.active
+                || (state.status.state != IndexState::Ready
+                    && state.status.state != IndexState::Rebuilding)
             {
                 return Err(unavailable("索引未就绪或已过期，请重新打开库"));
             }
             state.generation
         };
         let rebuilding = self.status().state == IndexState::Rebuilding;
-        let mut result = match super::search::search_path(&self.db_path, query) {
+        let reader = self
+            .readers
+            .lock()
+            .unwrap()
+            .as_ref()
+            .and_then(std::sync::Weak::upgrade);
+        let read = reader
+            .as_ref()
+            .map(|index| index.search(query))
+            .unwrap_or_else(|| Err(unavailable("索引尚未打开")));
+        let mut result = match read {
             Ok(result) => result,
             Err(error) if rebuilding && error.code == "E_INDEX_UNAVAILABLE" => {
                 scan_search(&self.db_path, &self.vault, query)?
@@ -364,7 +413,8 @@ impl IndexSession for BackgroundIndex {
             .state
             .lock()
             .map_err(|_| unavailable("索引状态锁异常"))?;
-        if state.generation != generation
+        if !state.active
+            || state.generation != generation
             || !matches!(
                 state.status.state,
                 IndexState::Ready | IndexState::Rebuilding
@@ -381,7 +431,12 @@ impl IndexSession for BackgroundIndex {
             .map(|s| s.status.clone())
             .unwrap_or_default();
         if self.full_rebuild.load(Ordering::Acquire)
-            && self.worker.as_ref().is_some_and(|w| !w.is_finished())
+            && self
+                .worker
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_some_and(|w| !w.is_finished())
         {
             status.state = IndexState::Rebuilding;
         }
@@ -798,5 +853,98 @@ mod tests {
         );
         assert_ne!(index.status().unwrap().state, IndexState::Ready);
         assert_eq!(index.status().unwrap().note_count, 0);
+    }
+
+    #[test]
+    fn slow_reconcile_waits_a_full_interval_after_completion() {
+        let temp = tempfile::tempdir().unwrap();
+        let vault = temp.path().join("vault");
+        fs::create_dir(&vault).unwrap();
+        fs::write(vault.join("test.md"), "对账内容").unwrap();
+        let events = Arc::new(Mutex::new(Vec::<(String, Instant)>::new()));
+        let sink = events.clone();
+        let worker = BackgroundIndex::start_with_options(
+            temp.path().join("data"),
+            vault.to_string_lossy().into_owned(),
+            "0123456789abcdef".into(),
+            Arc::new(move |name, payload| {
+                if name == "index.state" {
+                    sink.lock()
+                        .unwrap()
+                        .push((payload["state"].as_str().unwrap().into(), Instant::now()));
+                }
+            }),
+            WorkerOptions {
+                native_watch: false,
+                reconcile_interval: Duration::from_millis(120),
+                reconcile_test_delay: Duration::from_millis(180),
+                debounce: Duration::ZERO,
+                ..WorkerOptions::default()
+            },
+        );
+        let start = Instant::now();
+        loop {
+            if events
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(s, _)| s == "ready")
+                .count()
+                >= 3
+            {
+                break;
+            }
+            assert!(start.elapsed() < Duration::from_secs(10));
+            thread::sleep(Duration::from_millis(5));
+        }
+        worker.rebuild().unwrap();
+        loop {
+            if events
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(s, _)| s == "ready")
+                .count()
+                >= 5
+            {
+                break;
+            }
+            assert!(start.elapsed() < Duration::from_secs(10));
+            thread::sleep(Duration::from_millis(5));
+        }
+        worker.shutdown();
+        let events = events.lock().unwrap();
+        let second = events
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.0 == "ready")
+            .nth(1)
+            .unwrap()
+            .0;
+        let next = events
+            .iter()
+            .skip(second + 1)
+            .find(|e| e.0 == "rebuilding")
+            .unwrap();
+        assert!(
+            next.1.duration_since(events[second].1) >= Duration::from_millis(100),
+            "reconcile must cool down after completion"
+        );
+        let manual = events
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.0 == "ready")
+            .nth(3)
+            .unwrap()
+            .0;
+        let next = events
+            .iter()
+            .skip(manual + 1)
+            .find(|e| e.0 == "rebuilding")
+            .unwrap();
+        assert!(
+            next.1.duration_since(events[manual].1) >= Duration::from_millis(100),
+            "rebuild must reset periodic reconciliation cooldown"
+        );
     }
 }

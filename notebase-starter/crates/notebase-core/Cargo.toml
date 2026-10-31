@@ -1,6 +1,6 @@
 [package]
 name = "notebase-core"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2021"
 
 [dependencies]
@@ -11,14 +11,25 @@ sha2 = "0.10"
 tempfile = "3"
 walkdir = "2"
 unicode-normalization = "0.1.26"
-rusqlite = { version = "0.41", features = ["bundled"] }
+rusqlite = { version = "0.41", features = ["bundled", "functions", "backup"] }
+memchr = "2.8.3"
 comrak = { version = "0.57", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 notify = "8.2.1"
 fs2 = "0.4"
+base64 = "0.22"
+percent-encoding = "2"
+zip = { version = "2.4", default-features = false, features = ["deflate"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+roxmltree = "0.20"
+globset = "0.4"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
+keyring = { version = "3", features = ["windows-native"] }
+
+[target.'cfg(target_os="macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
 
 [dev-dependencies]
 tempfile = "3"

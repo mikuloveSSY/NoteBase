@@ -1,0 +1,10 @@
+{
+  "completion": "index.state ready after requested job",
+  "corpusBytes": 492538400,
+  "dataBytesAfterClose": 1486151680,
+  "indexBytesLive": 1488216064,
+  "jobId": "rebuild-43780-1793264610150-0",
+  "notes": 100000,
+  "rebuildMs": 502916,
+  "truthAfterRebuildVerified": true
+}

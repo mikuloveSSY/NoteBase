@@ -156,3 +156,120 @@ fn malformed_queries_are_distinct_from_empty_results_and_html_is_escaped() {
     assert!(!snippet.contains("<script>"));
     assert!(snippet.contains("&lt;<b>script</b>&gt;"));
 }
+
+#[test]
+fn parallel_pool_queries_preserve_counts_and_empty_past_end_pages() {
+    let (_dir, store) = fixture();
+    std::thread::scope(|scope| {
+        let jobs: Vec<_> = (0..8)
+            .map(|_| {
+                scope.spawn(|| {
+                    for _ in 0..20 {
+                        assert_eq!(
+                            store.search(&json!({"query":"动态"})).unwrap()["totalApprox"],
+                            3
+                        );
+                        assert_eq!(
+                            store.search(&json!({"query":"DP"})).unwrap()["totalApprox"],
+                            1
+                        );
+                    }
+                })
+            })
+            .collect();
+        for job in jobs {
+            job.join().unwrap();
+        }
+    });
+    let first = query(&store, json!({"query":"动态","limit":1}));
+    let signature = first["nextCursor"]
+        .as_str()
+        .unwrap()
+        .split_once(':')
+        .unwrap()
+        .0;
+    let page = query(
+        &store,
+        json!({"query":"动态","limit":1,"cursor":format!("{signature}:999")}),
+    );
+    assert_eq!(page["totalApprox"], 3);
+    assert_eq!(page["items"], json!([]));
+    assert!(page["nextCursor"].is_null());
+}
+
+#[test]
+fn optimized_title_candidates_keep_literal_unicode_and_ascii_case_semantics() {
+    let (_dir, store) = fixture();
+    store
+        .upsert_batch(&[NoteRecord {
+            path: RelPath::new("unicode.md").unwrap(),
+            title: "中文% _中文 😀中文 É中文 é中文 AbC á中".into(),
+            body: String::new(),
+            size_bytes: 0,
+            mtime_ms: 0,
+            content_hash: "b".repeat(64),
+            created_ms: None,
+            updated_ms: None,
+            has_attachment: false,
+            aliases: vec![],
+            tags: vec![],
+        }])
+        .unwrap();
+    for term in [
+        "中文%",
+        "_中文",
+        "😀中文",
+        "É中文",
+        "é中文",
+        "AbC",
+        "abc",
+        "á中",
+        "%",
+        "_",
+        "😀中",
+        "DP",
+        "dp",
+    ] {
+        let pattern = format!(
+            "%{}%",
+            term.replace('\\', "\\\\")
+                .replace('%', "\\%")
+                .replace('_', "\\_")
+        );
+        let title_matches:i64=store.read(|c|c.query_row("SELECT count(*) FROM notes WHERE path='unicode.md' AND title LIKE ?1 ESCAPE '\\'",[pattern],|r|r.get(0))).unwrap();
+        let page = store.search(&json!({"query":term})).unwrap();
+        let found = page["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v["path"] == "unicode.md");
+        assert_eq!(found, title_matches == 1, "{term}");
+    }
+}
+
+#[test]
+fn vectorized_body_prefilter_keeps_literal_like_results() {
+    let (_dir, store) = fixture();
+    let mut note = store
+        .get(&RelPath::new("课/B.md").unwrap())
+        .unwrap()
+        .unwrap();
+    note.title = "empty".into();
+    note.aliases.clear();
+    note.tags.clear();
+    note.body = "甲乙 🙂中 100% a_b \\ 123".into();
+    note.size_bytes = note.body.len() as u64;
+    store.upsert_batch(&[note]).unwrap();
+    for text in ["甲乙", "🙂中", "%", "_", "\\", "12", "无", "甲"] {
+        let pattern = format!(
+            "%{}%",
+            text.replace('\\', "\\\\")
+                .replace('%', "\\%")
+                .replace('_', "\\_")
+        );
+        let expected:Vec<String>=store.read(|c|{let mut stmt=c.prepare("SELECT n.path FROM notes n JOIN note_fts_content f ON n.rowid=f.id WHERE f.c2 LIKE ?1 ESCAPE '\\' ORDER BY n.path")?;let rows=stmt.query_map([pattern],|r|r.get(0))?;rows.collect()}).unwrap();
+        let mut actual = paths(&store.search(&json!({"query":text})).unwrap());
+        actual.sort();
+        assert_eq!(actual, expected, "{text}");
+    }
+}

@@ -1,0 +1,31 @@
+
+> notebase-starter@0.7.0 desktop:build
+> tauri build --no-bundle
+
+        Info Looking up installed tauri packages to check mismatched versions...
+     Running beforeBuildCommand `npm run build`
+
+> notebase-starter@0.7.0 build
+> tsc --noEmit && vite build
+
+vite v7.3.7 building client environment for production...
+transforming...
+✓ 48 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                          0.35 kB │ gzip:   0.26 kB
+dist/assets/index-Bppp5qvD.css          10.10 kB │ gzip:   2.95 kB
+dist/assets/event-DJ0LsikI.js            1.38 kB │ gzip:   0.67 kB
+dist/assets/webviewWindow-y29BxUUP.js    4.95 kB │ gzip:   1.47 kB
+dist/assets/window-BGLVd_y2.js          13.71 kB │ gzip:   3.41 kB
+dist/assets/index-D-jlZ9Ja.js          686.21 kB │ gzip: 236.11 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 2.43s
+   Compiling notebase-core v0.7.0 (D:\NoteBase\repository\notebase-starter\crates\notebase-core)
+   Compiling notebase v0.7.0 (D:\NoteBase\repository\notebase-starter\src-tauri)
+    Finished `release` profile [optimized] target(s) in 1m 06s
+       Built application at: D:\NoteBase\repository\notebase-starter\src-tauri\target\release\notebase.exe

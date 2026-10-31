@@ -1,0 +1,12 @@
+   Compiling notebase-core v0.7.0 (D:\NoteBase\repository\notebase-starter\crates\notebase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 11.63s
+     Running tests\team_all.rs (D:/NoteBase/.tools/team-all-core-target\debug\deps\team_all-2c47f4197f2dd26f.exe)
+
+running 5 tests
+test deduplicated_version_keeps_description_creation_time_and_renews_retention ... ok
+test long_job_releases_app_lock_rejects_writes_and_always_restores_service ... ok
+test failed_restore_releases_maintenance_and_reopens_index_without_touching_notes ... ok
+test backup_and_original_restore_stop_old_arc_restart_search_and_clear_old_baselines ... ok
+test mixed_settings_and_migration_preserve_backup_history_and_sync_references ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s

@@ -1,0 +1,125 @@
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\NoteBase\repository\notebase-starter\crates\notebase-core\target\debug\incremental\notebase_core-026qm40rfmm8l\s-hnq8b47bla-0u88lyb-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\NoteBase\repository\notebase-starter\crates\notebase-core\target\debug\incremental\notebase_core-3ru8ewa919nhi\s-hnq8b4d9or-0qx7afp-working`
+
+warning: `notebase-core` (lib) generated 1 warning
+warning: `notebase-core` (lib test) generated 1 warning
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\NoteBase\repository\notebase-starter\crates\notebase-core\target\debug\incremental\perf-3hbg4gvgmy2ct\s-hnq8b7o76t-15njhio-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\NoteBase\repository\notebase-starter\crates\notebase-core\target\debug\incremental\search-21fs6hs9fx3h6\s-hnq8b7on6f-0m3mkbf-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\NoteBase\repository\notebase-starter\crates\notebase-core\target\debug\incremental\core-1amcgzi35odlu\s-hnq8b7ndzq-0mobtzy-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\NoteBase\repository\notebase-starter\crates\notebase-core\target\debug\incremental\watch-0j2qjkfjnta3c\s-hnq8b7m9fz-17f5zs0-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\NoteBase\repository\notebase-starter\crates\notebase-core\target\debug\incremental\storage-1sxgq85rh9b5h\s-hnq8b7nkb0-0ubz5lq-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\NoteBase\repository\notebase-starter\crates\notebase-core\target\debug\incremental\recovery-3ex68gy56qi5u\s-hnq8b7m9b9-0lqlxye-working`
+
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\NoteBase\repository\notebase-starter\crates\notebase-core\target\debug\incremental\index-1l950nlxfqjeq\s-hnq8b7msuz-0co0cto-working`
+
+   Compiling notebase-core v0.7.0 (D:\NoteBase\repository\notebase-starter\crates\notebase-core)
+warning: `notebase-core` (example "perf") generated 1 warning
+warning: `notebase-core` (test "search") generated 1 warning
+warning: `notebase-core` (test "core") generated 1 warning
+warning: `notebase-core` (test "watch") generated 1 warning
+warning: `notebase-core` (test "storage") generated 1 warning
+warning: `notebase-core` (test "recovery") generated 1 warning
+warning: `notebase-core` (test "index") generated 1 warning
+warning: hard linking files in the incremental compilation cache failed. copying files instead. consider moving the cache directory to a file system which supports hard linking in session dir `\\?\D:\NoteBase\repository\notebase-starter\crates\notebase-core\target\debug\incremental\concurrency-33z95kq8x43t8\s-hnq8bsmxir-0w239ey-working`
+
+warning: `notebase-core` (test "concurrency") generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.07s
+     Running unittests src\lib.rs (crates\notebase-core\target\debug\deps\notebase_core-34cfe92faf54720e.exe)
+
+running 11 tests
+test domain::event_tests::transport_names_match_typescript_contract ... ok
+test index::queue::tests::duplicates_preserve_local_source_and_overflow_requests_reconcile ... ok
+test infra::tests::interrupted_atomic_write_preserves_original_and_cleans_temp ... ok
+test migration::tests::equal_file_count_and_size_do_not_hide_changed_content ... ok
+test index::incremental::tests::reconcile_preserves_unchanged_records_but_checks_hash_when_stat_is_equal ... ok
+test index::worker::tests::local_save_during_build_does_not_publish_ready ... ok
+test index::worker::tests::cancellation_between_file_reads_never_commits_a_ready_index ... ok
+test index::sqlite::compaction_tests::compaction_preserves_sparse_note_rowids_fts_and_all_business_records ... ok
+test index::worker::tests::missing_index_scan_fallback_has_stable_paging ... ok
+test index::worker::tests::slow_reconcile_waits_a_full_interval_after_completion ... ok
+test index::sqlite::compaction_tests::repeated_publication_reuses_space_instead_of_retaining_deleted_segments ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.61s
+
+     Running tests\concurrency.rs (crates\notebase-core\target\debug\deps\concurrency-f3c2c72e3e22e97a.exe)
+
+running 2 tests
+test same_vault_reopen_keeps_shared_session_and_app_drop_cancels_external_arc ... ok
+test detached_query_allows_application_work_and_switch_cancels_old_session ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\core.rs (crates\notebase-core\target\debug\deps\core-d8c4279cd23a750a.exe)
+
+running 15 tests
+test rejects_traversal_and_reserved_names ... ok
+test unimplemented_does_not_report_success ... ok
+test invalid_utf8_is_not_overwritten ... ok
+test bad_yaml_remains_intact ... ok
+test sanitized_creation_collisions_do_not_overwrite ... FAILED
+test rejects_stale_client_without_writing ... ok
+test create_read_save_hash_and_no_temporary_files ... FAILED
+test readonly_file_preview_cannot_be_saved_through_ipc ... ok
+test duplicate_create_never_overwrites ... FAILED
+test yaml_parses_without_removing_original ... ok
+test saving_removes_bom_and_preserves_crlf ... FAILED
+test external_modification_preserved ... ok
+test pagination_and_trash_exclusion ... ok
+test large_read_returns_a_bounded_readonly_preview_without_a_save_hash ... ok
+test exactly_ten_megabytes_is_not_truncated_and_small_saves_keep_lf ... FAILED
+
+failures:
+
+---- sanitized_creation_collisions_do_not_overwrite stdout ----
+
+thread 'sanitized_creation_collisions_do_not_overwrite' (24664) panicked at tests\core.rs:205:9:
+assertion `left == right` failed: {"error":{"code":"E_IO_PERMISSION","detail":{},"message":"拒绝访问。 (os error 5)","retryable":false},"id":"test","ok":false}
+  left: Null
+ right: "_CON.md"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- create_read_save_hash_and_no_temporary_files stdout ----
+
+thread 'create_read_save_hash_and_no_temporary_files' (5796) panicked at tests\core.rs:26:5:
+assertion `left == right` failed
+  left: Null
+ right: "中文笔记.md"
+
+---- duplicate_create_never_overwrites stdout ----
+
+thread 'duplicate_create_never_overwrites' (19528) panicked at tests\core.rs:58:5:
+assertion `left == right` failed
+  left: Null
+ right: "A (2).md"
+
+---- saving_removes_bom_and_preserves_crlf stdout ----
+
+thread 'saving_removes_bom_and_preserves_crlf' (25380) panicked at tests\core.rs:115:5:
+assertion `left == right` failed
+  left: Bool(false)
+ right: true
+
+---- exactly_ten_megabytes_is_not_truncated_and_small_saves_keep_lf stdout ----
+
+thread 'exactly_ten_megabytes_is_not_truncated_and_small_saves_keep_lf' (42552) panicked at tests\core.rs:246:5:
+assertion `left == right` failed
+  left: Bool(false)
+ right: true
+
+
+failures:
+    create_read_save_hash_and_no_temporary_files
+    duplicate_create_never_overwrites
+    exactly_ten_megabytes_is_not_truncated_and_small_saves_keep_lf
+    sanitized_creation_collisions_do_not_overwrite
+    saving_removes_bom_and_preserves_crlf
+
+test result: FAILED. 10 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.57s
+
+error: test failed, to rerun pass `--test core`

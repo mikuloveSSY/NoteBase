@@ -80,7 +80,14 @@ pub trait IndexStore {
 }
 
 // 应用层仅依赖会话端口；后台任务不借用 App 的全局锁。
-pub trait IndexSession: Send {
+pub trait IndexSession: Send + Sync {
+    fn cancel(&self);
+
+    /// Stop and join the sole writer before a backup/restore mutates the library.
+    /// Implementations without a quiescence guarantee must fail rather than pretend to pause.
+    fn suspend(&self) -> Result<()> {
+        Err(unavailable("索引实现未提供安全暂停端口"))
+    }
     fn rebuild(&self) -> Result<String>;
     fn enqueue(&self, path: &RelPath) -> bool;
     fn search(&self, query: &serde_json::Value) -> Result<serde_json::Value>;

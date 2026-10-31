@@ -1,1 +1,16 @@
-{"identifier":"main-capability","description":"主窗口 IPC 和关闭确认","windows":["main"],"permissions":["core:default","core:window:allow-close","core:window:allow-destroy"]}
+{
+  "identifier": "main-capability",
+  "description": "主窗口 IPC 和关闭确认",
+  "windows": [
+    "main",
+    "note-*"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-close",
+    "core:window:allow-destroy",
+    "core:webview:allow-create-webview-window",
+    "core:window:allow-set-focus",
+    "core:window:allow-show"
+  ]
+}

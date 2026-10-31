@@ -1,0 +1,32 @@
+   Compiling notebase-core v0.7.0 (D:\NoteBase\repository\notebase-starter\crates\notebase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.94s
+     Running tests\core.rs (crates\notebase-core\target\debug\deps\core-d8c4279cd23a750a.exe)
+
+running 15 tests
+test unimplemented_does_not_report_success ... ok
+test rejects_traversal_and_reserved_names ... ok
+test rejects_stale_client_without_writing ... ok
+test invalid_utf8_is_not_overwritten ... ok
+test readonly_file_preview_cannot_be_saved_through_ipc ... ok
+test duplicate_create_never_overwrites ... ok
+test yaml_parses_without_removing_original ... ok
+test bad_yaml_remains_intact ... ok
+test external_modification_preserved ... ok
+test pagination_and_trash_exclusion ... ok
+test create_read_save_hash_and_no_temporary_files ... ok
+test sanitized_creation_collisions_do_not_overwrite ... ok
+test saving_removes_bom_and_preserves_crlf ... ok
+test large_read_returns_a_bounded_readonly_preview_without_a_save_hash ... ok
+test exactly_ten_megabytes_is_not_truncated_and_small_saves_keep_lf ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.55s
+
+     Running tests\member4.rs (crates\notebase-core\target\debug\deps\member4-61874fcbe03d0eca.exe)
+
+running 4 tests
+test malformed_settings_are_retained_without_overwrite ... ok
+test logs_are_bounded_redacted_and_expire_only_owned_files ... ok
+test preferences_preserve_vault_and_other_members_keys_and_reject_conflicts_atomically ... ok
+test integrated_member_two_save_is_queued_and_searchable_and_reopen_preserves_clients ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s

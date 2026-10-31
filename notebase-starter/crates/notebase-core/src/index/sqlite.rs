@@ -11,14 +11,15 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         Mutex, MutexGuard,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 pub const SCHEMA: &str = include_str!("schema.sql");
 
 pub struct SqliteIndexStore {
-    writer: Mutex<Connection>,
+    // 先关闭读连接，最后关闭写连接，正常退出时完成 WAL 检查点。
     readers: [Mutex<Connection>; 2],
+    writer: Mutex<Connection>,
     next_reader: AtomicUsize,
     path: PathBuf,
     // 保证遵守端口的多个进程/会话也不能同时持有写连接。
@@ -43,6 +44,20 @@ fn set_meta(connection: &Connection, key: &str, value: &str) -> Result<()> {
     db(connection.execute("INSERT INTO meta(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value", params![key,value]))?;
     Ok(())
 }
+fn notes_identity(conn: &Connection) -> Result<Vec<u8>> {
+    use sha2::{Digest, Sha256};
+    let mut stmt = db(conn.prepare("SELECT rowid,path FROM notes ORDER BY rowid"))?;
+    let mut rows = db(stmt.query([]))?;
+    let mut hash = Sha256::new();
+    while let Some(row) = db(rows.next())? {
+        let id: i64 = db(row.get(0))?;
+        let path: String = db(row.get(1))?;
+        hash.update(id.to_le_bytes());
+        hash.update((path.len() as u64).to_le_bytes());
+        hash.update(path.as_bytes());
+    }
+    Ok(hash.finalize().to_vec())
+}
 fn configure(connection: &Connection, writer: bool) -> Result<()> {
     db(connection.busy_timeout(Duration::from_millis(5000)))?;
     db(connection.execute_batch("PRAGMA foreign_keys=ON; PRAGMA cache_size=-65536;"))?;
@@ -54,7 +69,7 @@ fn configure(connection: &Connection, writer: bool) -> Result<()> {
         }
         db(connection.execute_batch("PRAGMA synchronous=NORMAL;"))?;
     } else {
-        db(connection.execute_batch("PRAGMA query_only=ON;"))?;
+        db(connection.execute_batch("PRAGMA query_only=ON; PRAGMA mmap_size=268435456;"))?;
     }
     Ok(())
 }
@@ -248,6 +263,7 @@ impl SqliteIndexStore {
     /// 旁路构建完成后仅替换派生表；四张业务状态表保持原样。
     pub fn publish_from(&self, staging: &Path) -> Result<()> {
         let mut writer = lock(&self.writer)?;
+        self.compact_locked(&mut writer, false)?;
         db(writer.execute(
             "ATTACH DATABASE ?1 AS candidate",
             [staging.to_string_lossy().as_ref()],
@@ -255,6 +271,7 @@ impl SqliteIndexStore {
         let result = (|| {
             let tx = db(writer.transaction())?;
             db(tx.execute_batch("DELETE FROM links; DELETE FROM aliases; DELETE FROM tags; DELETE FROM note_fts; DELETE FROM notes;
+                INSERT INTO note_fts(note_fts) VALUES('optimize');
                 INSERT INTO notes(rowid,path,title,size_bytes,mtime_ms,content_hash,created_ms,updated_ms,has_attachment,indexed_at_ms) SELECT rowid,path,title,size_bytes,mtime_ms,content_hash,created_ms,updated_ms,has_attachment,indexed_at_ms FROM candidate.notes;
                 INSERT INTO note_fts(rowid,path,title,body) SELECT rowid,path,title,body FROM candidate.note_fts;
                 INSERT INTO aliases SELECT * FROM candidate.aliases; INSERT INTO tags SELECT * FROM candidate.tags;"))?;
@@ -270,7 +287,73 @@ impl SqliteIndexStore {
             db(tx.commit())
         })();
         let detach = db(writer.execute_batch("DETACH DATABASE candidate"));
-        result.and(detach)
+        result.and(detach)?;
+        db(writer.execute("INSERT INTO note_fts(note_fts) VALUES('optimize')", []))?;
+        // busy 时 SQLite 保留 WAL，不影响已提交数据。
+        db(writer.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)"))
+    }
+    // 仅在碎片显著时压缩旧库；先生成并核对独立快照，再通过 SQLite backup 原子复制。
+    // 不在活动库上直接 VACUUM，避免依赖隐含 rowid 的重排规则。
+    fn compact_locked(&self, writer: &mut Connection, force: bool) -> Result<()> {
+        use rusqlite::backup::{Backup, StepResult};
+        let pages: i64 = db(writer.query_row("PRAGMA page_count", [], |r| r.get(0)))?;
+        let free: i64 = db(writer.query_row("PRAGMA freelist_count", [], |r| r.get(0)))?;
+        if !force && free <= pages / 4 {
+            return Ok(());
+        }
+        let identity = notes_identity(writer)?;
+        let folder = tempfile::Builder::new()
+            .prefix("rebuild-compact-")
+            .tempdir_in(self.path.parent().unwrap())
+            .map_err(crate::domain::AppError::io)?;
+        let compact_path = folder.path().join("index.db");
+        db(writer.execute(
+            "VACUUM main INTO ?1",
+            [compact_path.to_string_lossy().as_ref()],
+        ))?;
+        let source = db(Connection::open_with_flags(
+            &compact_path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY
+                | OpenFlags::SQLITE_OPEN_NO_MUTEX
+                | OpenFlags::SQLITE_OPEN_NOFOLLOW,
+        ))?;
+        let check: String = db(source.query_row("PRAGMA quick_check", [], |r| r.get(0)))?;
+        if check != "ok" || notes_identity(&source)? != identity {
+            return Err(unavailable("压缩快照校验失败，活动索引保持原样"));
+        }
+        // 只在最终复制阶段暂停本进程读连接；快照生成期间查询继续使用原库。
+        let readers: Vec<_> = self.readers.iter().map(lock).collect::<Result<_>>()?;
+        let result = (|| -> Result<()> {
+            for reader in &readers {
+                db(reader.execute_batch("PRAGMA mmap_size=0"))?;
+            }
+            {
+                let copy = db(Backup::new(&source, writer))?;
+                let started = Instant::now();
+                loop {
+                    if started.elapsed() > Duration::from_secs(120) {
+                        return Err(unavailable("压缩发布等待超时，原索引保留"));
+                    }
+                    match db(copy.step(512))? {
+                        StepResult::Done => break,
+                        StepResult::More => {}
+                        StepResult::Busy | StepResult::Locked => {
+                            std::thread::sleep(Duration::from_millis(10))
+                        }
+                        _ => return Err(unavailable("压缩发布状态异常")),
+                    }
+                }
+            }
+            db(writer.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)"))?;
+            Ok(())
+        })();
+        let mut restored = Ok(());
+        for reader in &readers {
+            if let Err(error) = db(reader.execute_batch("PRAGMA mmap_size=268435456")) {
+                restored = Err(error);
+            }
+        }
+        result.and(restored)
     }
     pub(crate) fn stable_scan_epoch(&self) -> Result<()> {
         use sha2::{Digest, Sha256};
@@ -436,5 +519,167 @@ impl IndexStore for SqliteIndexStore {
             last_full_build_ms: last.and_then(|v| v.parse().ok()),
             progress: None,
         })
+    }
+}
+
+#[cfg(test)]
+mod compaction_tests {
+    use super::*;
+    use serde_json::json;
+    fn note(path: &str) -> NoteRecord {
+        NoteRecord {
+            path: RelPath::new(path).unwrap(),
+            title: path.into(),
+            body: format!("保留正文{path}"),
+            size_bytes: 20,
+            mtime_ms: 1,
+            content_hash: "a".repeat(64),
+            created_ms: None,
+            updated_ms: None,
+            has_attachment: false,
+            aliases: vec!["别称".into()],
+            tags: vec!["测试".into()],
+        }
+    }
+    fn business_rows(index: &SqliteIndexStore) -> Vec<Vec<Vec<rusqlite::types::Value>>> {
+        [
+            "snapshot_index",
+            "sync_state",
+            "sync_tombstone",
+            "rename_journal",
+        ]
+        .iter()
+        .map(|table| {
+            index
+                .read(|c| {
+                    let mut stmt =
+                        c.prepare(&format!("SELECT rowid,* FROM {table} ORDER BY rowid"))?;
+                    let columns = stmt.column_count();
+                    let rows = stmt.query_map([], |r| (0..columns).map(|i| r.get(i)).collect())?;
+                    rows.collect()
+                })
+                .unwrap()
+        })
+        .collect()
+    }
+    #[test]
+    fn compaction_preserves_sparse_note_rowids_fts_and_all_business_records() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("index.db");
+        let index = SqliteIndexStore::open(&path, "0123456789abcdef").unwrap();
+        index
+            .upsert_batch(&[note("A.md"), note("B.md"), note("C.md")])
+            .unwrap();
+        index.remove(&[RelPath::new("B.md").unwrap()]).unwrap();
+        index.finish_build().unwrap();
+        {
+            let w = lock(&index.writer).unwrap();
+            w.execute_batch("INSERT INTO snapshot_index(rowid,note_path,version_id,blob_rel,size_bytes,created_ms) VALUES(17,'A.md','v1','snap/a',3,1); INSERT INTO sync_state(rowid,path,base_hash,local_hash,remote_etag,device_id,last_synced_ms,state) VALUES(19,'A.md','base','local','etag','dev',1,'dirty'); INSERT INTO sync_tombstone(rowid,path,deleted_ms,base_hash) VALUES(23,'B.md',1,'hash'); INSERT INTO rename_journal VALUES(31,'A.md','C.md','[]','[]',1,'running');").unwrap();
+        }
+        for _ in 0..2 {
+            assert_eq!(
+                index.search(&json!({"query":"保留"})).unwrap()["totalApprox"],
+                2
+            );
+        }
+        let before = index.read(|c| Ok(notes_identity(c).unwrap())).unwrap();
+        let business_before = business_rows(&index);
+        {
+            let mut w = lock(&index.writer).unwrap();
+            index.compact_locked(&mut w, true).unwrap();
+        }
+        assert_eq!(business_rows(&index), business_before);
+        assert_eq!(
+            index.read(|c| Ok(notes_identity(c).unwrap())).unwrap(),
+            before
+        );
+        assert_eq!(
+            index.search(&json!({"query":"保留"})).unwrap()["totalApprox"],
+            2
+        );
+        for (table, id) in [
+            ("snapshot_index", 17),
+            ("sync_state", 19),
+            ("sync_tombstone", 23),
+            ("rename_journal", 31),
+        ] {
+            assert_eq!(
+                index
+                    .read(
+                        |c| c.query_row(&format!("SELECT rowid FROM {table}"), [], |r| r
+                            .get::<_, i64>(0))
+                    )
+                    .unwrap(),
+                id
+            );
+        }
+        assert_eq!(
+            index
+                .read(
+                    |c| c.query_row("SELECT local_hash FROM sync_state", [], |r| r
+                        .get::<_, String>(0))
+                )
+                .unwrap(),
+            "local"
+        );
+        assert_eq!(
+            index
+                .read(
+                    |c| c.query_row("SELECT blob_rel FROM snapshot_index", [], |r| r
+                        .get::<_, String>(0))
+                )
+                .unwrap(),
+            "snap/a"
+        );
+        assert_eq!(
+            index
+                .read(|c| c.query_row("PRAGMA journal_mode", [], |r| r.get::<_, String>(0)))
+                .unwrap(),
+            "wal"
+        );
+        validate_schema(&lock(&index.writer).unwrap()).unwrap();
+    }
+    #[test]
+    fn repeated_publication_reuses_space_instead_of_retaining_deleted_segments() {
+        let temp = tempfile::tempdir().unwrap();
+        let old = SqliteIndexStore::open(&temp.path().join("old.db"), "0123456789abcdef").unwrap();
+        let candidate =
+            SqliteIndexStore::open(&temp.path().join("candidate.db"), "0123456789abcdef").unwrap();
+        let mut records = Vec::new();
+        let mut seed = 20261029u64;
+        for n in 0..500 {
+            let mut record = note(&format!("{n}.md"));
+            let mut body = String::new();
+            while body.len() < 4900 {
+                seed = seed
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                body.push_str(&format!(
+                    "段落{:08x}：概念与例题分析，边界条件、实现细节以及复杂度证明。\n",
+                    seed as u32
+                ));
+            }
+            record.body = body;
+            record.size_bytes = record.body.len() as u64;
+            records.push(record);
+        }
+        for batch in records.chunks(200) {
+            candidate.upsert_batch(batch).unwrap();
+        }
+        candidate.optimize().unwrap();
+        candidate.finish_build().unwrap();
+        old.publish_from(&temp.path().join("candidate.db")).unwrap();
+        let baseline = old.status().unwrap().index_bytes;
+        for _ in 0..3 {
+            old.publish_from(&temp.path().join("candidate.db")).unwrap();
+            assert!(
+                old.status().unwrap().index_bytes <= baseline * 115 / 100 + 32768,
+                "rebuild should reuse obsolete FTS pages"
+            );
+            assert_eq!(
+                old.search(&json!({"query":"概念"})).unwrap()["totalApprox"],
+                500
+            );
+        }
     }
 }
