@@ -1,0 +1,14 @@
+{
+  "sourceRevision": "d3d0061f47c3db3202862e0e1888efb2aa183c81",
+  "workingTreeDirtyAtPackaging": false,
+  "executable": "D:\\NoteBase\\delivery\\NoteBase-0.7.0-d3d0061f-windows-x64\\NoteBase.exe",
+  "exeSha256": "39231f2c732c9db1a830d655aa684cc29ef0fbfc980dd797828e727fedba831f",
+  "sourceAndZipExeMatch": true,
+  "zip": "D:\\NoteBase\\delivery\\NoteBase-0.7.0-d3d0061f-windows-x64.zip",
+  "zipSha256": "68702d2e4fc0caaa4c95804762eeae8c3a2c0a5ca28c238bbce6020d1e5b20df",
+  "installer": "D:\\NoteBase\\delivery\\NoteBase-0.7.0-d3d0061f-windows-x64-setup.exe",
+  "installerSha256": "91c45804d527630bb482324d87820e377377309c280239b9fd0278fbc0ee3dc9",
+  "installerGenerated": true,
+  "cleanMachineInstallationTested": false,
+  "nativeDialogClicked": false
+}

@@ -317,7 +317,7 @@ test('真实exe重命名保留历史且旧路径新建不串版本',async({deskt
  const snap=await invokeCore(page,'backup_create',{scope:'note',path:'A.md',description:'rename history'});expect(snap.ok).toBe(true);
  const plan=await invokeCore(page,'note_rename',{path:'A.md',newName:'B',planOnly:true});expect(plan.ok).toBe(true);
  const renamed=await invokeCore(page,'note_rename',{path:'A.md',newName:'B',planOnly:false,planId:plan.data.plan.id});expect(renamed.ok).toBe(true);
- await page.locator('#refresh').click();await page.getByRole('button',{name:'B.md',exact:true}).click();await page.locator('#versionsRefresh').click();await expect(page.locator('#versions')).toContainText('rename history');
+ await page.locator('#refresh').click();await page.getByRole('button',{name:'B.md',exact:true}).click();await expect(page.locator('#path')).toHaveText('B.md');await page.locator('#versionsRefresh').click();await expect(page.locator('#versions')).toContainText('rename history');
  const body=await invokeCore(page,'note_read',{path:'B.md',versionId:snap.data.versionId});expect(body.data.body).toBe('original history');
  expect((await invokeCore(page,'note_create',{title:'A',body:'new owner'})).ok).toBe(true);expect((await invokeCore(page,'backup_create',{scope:'note',path:'A.md'})).ok).toBe(true);
  const versions=await invokeCore(page,'note_list',{scope:'versions',path:'A.md'});expect(versions.data.items.some((v:{versionId:string})=>v.versionId===snap.data.versionId)).toBe(false);

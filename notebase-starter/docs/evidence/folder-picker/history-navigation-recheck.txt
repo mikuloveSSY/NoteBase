@@ -1,0 +1,12 @@
+
+> notebase-starter@0.7.0 test:desktop
+> playwright test --config playwright.desktop.config.ts --grep 真实exe重命名
+
+
+Running 1 test using 1 worker
+
+(node:32668) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 1 tests\desktop\storage.spec.ts:315:1 › 真实exe重命名保留历史且旧路径新建不串版本 (2.0s)
+
+  1 passed (2.8s)
