@@ -3,12 +3,6 @@
 > tauri bundle --bundles nsis --ci --no-binary-patching
 
         Warn Skipping binary patching for D:\NoteBase\repository\notebase-starter\src-tauri\target\release\notebase.exe due to --no-binary-patching flag.
-        Info Verifying NSIS package
- Downloading https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.13/nsis-3.13.zip
-        Info validating hash
-        Info extracting NSIS
- Downloading https://github.com/tauri-apps/nsis-tauri-utils/releases/download/nsis_tauri_utils-v0.5.3/nsis_tauri_utils.dll
-        Info validating hash
         Info Target: x64
      Running makensis to produce D:\NoteBase\repository\notebase-starter\src-tauri\target\release\bundle\nsis\NoteBase_0.7.0_x64-setup.exe
     Finished 1 bundle at:

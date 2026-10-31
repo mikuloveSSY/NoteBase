@@ -14,7 +14,8 @@
 - 增加每笔记私有递增序列、5秒显著回拨检测和脱敏告警，公开DTO隐藏序列；恢复目录发布/回退使用Windows无覆盖移动，双失败保留原件并在UI给出保留目录/快照路径。
 - 更新Windows打包脚本，输出NoteBase.exe、中文说明、来源清单与SHA256，拒绝覆盖旧交付；NSIS配置当前用户安装、中英界面及缺失WebView2时下载安装运行库。
 - 打包实跑修复npm锁文件空键的PowerShell解析，打包脚本明确需PowerShell 7+；截图复核后修正右侧表单标签换行和历史关闭的空态说明。
-- 本轮已完成核心201项、前端单元22项、浏览器24项、核心/外壳严格Clippy与前端构建；最终桌面、独立服务、可执行文件与安装器状态见[Windows候选版验收](notebase-starter/docs/Windows候选版验收.md)。
+- 本轮核心201、前端单元22、浏览器24、最终交付exe真实桌面20、独立WebDAV/Windows凭据1项共268个不同用例通过；核心/外壳严格Clippy、fmt、前端/release构建及NSIS安装器生成通过。交付exe从自身目录启动并核对源/副本/ZIP内哈希一致；此前重复运行不累加。
+- 最终程序包来源`c37b869`，位于本机`D:/NoteBase/delivery/NoteBase-0.7.0-c37b869b-windows-x64/NoteBase.exe`，另有ZIP、安装器和SHA256；生成物未提交Git。原始证据、失败修正与完整边界见[Windows候选版验收](notebase-starter/docs/Windows候选版验收.md)。安装器生成不等于已完成干净机安装/升级/卸载，完整需求/公网/最终规模性能和正式发布继续保留。
 
 ### 发布收口首轮 2026-11-01
 

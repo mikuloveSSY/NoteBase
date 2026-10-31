@@ -2,9 +2,9 @@
   "architecture": "windows-x64",
   "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
   "zip": {
-    "path": "D:/NoteBase/delivery/NoteBase-0.7.0-8584ed2b-windows-x64.zip",
-    "bytes": 7449224,
-    "sha256": "6ce87ec0c8a78fb6da135fc89d85e8cf9955e8265ee0d87aaebc64b0404befb9"
+    "path": "D:/NoteBase/delivery/NoteBase-0.7.0-c37b869b-windows-x64.zip",
+    "bytes": 7449218,
+    "sha256": "1f4ad0e2c2df98ac0ef1d08871237f5cb7f7f79f8c1494ad41fec7267329ce00"
   },
   "implementationCommit": "3d4f6c50e07a19701d1babadde0f0303f4faf340",
   "validation": {
@@ -17,21 +17,21 @@
     "desktop": 20
   },
   "installer": {
-    "path": "D:/NoteBase/delivery/NoteBase-0.7.0-8584ed2b-windows-x64-setup.exe",
-    "bytes": 5297510,
-    "sha256": "29424976fa6342076f23fdc3246c8df270dd3ace89bec2c1662af13a3ade57c6"
+    "path": "D:/NoteBase/delivery/NoteBase-0.7.0-c37b869b-windows-x64-setup.exe",
+    "bytes": 5294207,
+    "sha256": "b1084afc85b213843fb54d888ea69f3f264332c84d6879ad3ac43d85eb5e7f8f"
   },
   "os": "Microsoft Windows 10.0.26200",
   "notes": "Packaged exe launched from its own directory; installer generated, clean-machine install/upgrade/uninstall not run.",
   "softwareVersion": "0.7.0 development-candidate",
   "exe": {
-    "path": "D:/NoteBase/delivery/NoteBase-0.7.0-8584ed2b-windows-x64/NoteBase.exe",
+    "path": "D:/NoteBase/delivery/NoteBase-0.7.0-c37b869b-windows-x64/NoteBase.exe",
     "subsystem": "Windows GUI",
     "bytes": 19586560,
-    "sha256": "3ce0701235262dab1744543fc8da13eb922839af4b875f44a3d7d5bda95802fe"
+    "sha256": "8973938e3d1a8dbbfa5ab325745cc352589d2daf0cf5da33ea7f5978eaf6ab40"
   },
   "node": "v24.16.0",
   "baseCommit": "98150f32d54186053d07a7e7bc9f6c0628cd4d9e",
-  "sourceRevision": "8584ed2bb9f42c99b53132a4d14b6e08fe7efb7f",
-  "date": "2026-11-01T04:17:25.7437008+08:00"
+  "sourceRevision": "c37b869bc67860dd2450ae7535df0065ff4cd7f6",
+  "date": "2026-11-01T04:22:36.4629254+08:00"
 }
