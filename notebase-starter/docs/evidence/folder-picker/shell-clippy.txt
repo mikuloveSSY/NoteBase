@@ -1,2 +1,2 @@
-   Compiling notebase v0.7.0 (D:\NoteBase\repository\notebase-starter\src-tauri)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 8.82s
+    Checking notebase v0.7.0 (D:\NoteBase\repository\notebase-starter\src-tauri)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.33s

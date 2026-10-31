@@ -56,11 +56,13 @@ const test = base.extend<{ desktopPage: Page; vault: string }>({
       await use(page);
       if(!page.isClosed()) await page.screenshot({ path: testInfo.outputPath('desktop.png'), fullPage: true });
     } finally {
-      await browser?.close().catch(() => {});
       if (app.pid && app.exitCode === null) {
         // 只终止本测试启动的进程树，不按应用名清理用户正在运行的实例。
         spawnSync('taskkill', ['/PID', String(app.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
       }
+      // A failed multi-window test can leave a window vetoing close. Reap the
+      // owned app before closing CDP so teardown cannot hide the real assertion.
+      await browser?.close().catch(() => {});
     }
   },
   vault: async ({}, use, testInfo) => {
@@ -280,6 +282,9 @@ test('成员四第二窗口读写共享库且禁止切库，两个窗口内容�
  const before=await invokeCore(page,'note_read',{path:'Shared.md',clientId:'window-one'});const other=await invokeCore(second,'note_read',{path:'Shared.md',clientId:'window-two'});
  expect((await invokeCore(page,'note_save',{path:'Shared.md',body:'first window',baseHash:before.data.contentHash,clientId:'window-one',clientSeq:1})).ok).toBe(true);
  expect((await invokeCore(second,'note_save',{path:'Shared.md',body:'second overwrite',baseHash:other.data.contentHash,clientId:'window-two',clientSeq:1})).ok).toBe(false);expect(await readFile(resolve(vault,'Shared.md'),'utf8')).toBe('first window');
+ // Native folder selection returns a regular Windows path, while vault_info
+ // may use a canonical \\?\ path. The same folder must remain allowed.
+ const sameVault=await invokeCore(second,'vault_open',{path:vault});expect(sameVault.ok).toBe(true);
  const target=testInfo.outputPath('another');await mkdir(target);const blocked=await invokeCore(second,'vault_open',{path:target});expect(blocked.ok).toBe(false);expect(blocked.error.code).toBe('E_CANCELLED');
  const restoreBlocked=await invokeCore(second,'backup_restore',{filePath:testInfo.outputPath('not-used.zip'),mode:'original'});expect(restoreBlocked.ok).toBe(false);expect(restoreBlocked.error.code).toBe('E_CANCELLED');expect(await readFile(resolve(vault,'Shared.md'),'utf8')).toBe('first window');
 });

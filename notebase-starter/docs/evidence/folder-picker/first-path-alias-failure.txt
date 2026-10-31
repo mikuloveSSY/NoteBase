@@ -1,0 +1,36 @@
+
+> notebase-starter@0.7.0 test:desktop
+> playwright test --config playwright.desktop.config.ts --grep 第二窗口|原生文件夹
+
+
+Running 2 tests using 1 worker
+
+(node:28728) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 1 tests\desktop\storage.spec.ts:75:1 › 真实桌面已注册原生文件夹选择插件且具有打开权限 (18.1s)
+  x  2 tests\desktop\storage.spec.ts:276:1 › 成员四第二窗口读写共享库且禁止切库，两个窗口内容不互相覆盖 (1.1m)
+
+
+  1) tests\desktop\storage.spec.ts:276:1 › 成员四第二窗口读写共享库且禁止切库，两个窗口内容不互相覆盖 ───────────────────────────
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      283 |  // Native folder selection returns a regular Windows path, while vault_info
+      284 |  // may use a canonical \\?\ path. The same folder must remain allowed.
+    > 285 |  const sameVault=await invokeCore(second,'vault_open',{path:vault});expect(sameVault.ok).toBe(true);
+          |                                                                                          ^
+      286 |  const target=testInfo.outputPath('another');await mkdir(target);const blocked=await invokeCore(second,'vault_open',{path:target});expect(blocked.ok).toBe(false);expect(blocked.error.code).toBe('E_CANCELLED');
+      287 |  const restoreBlocked=await invokeCore(second,'backup_restore',{filePath:testInfo.outputPath('not-used.zip'),mode:'original'});expect(restoreBlocked.ok).toBe(false);expect(restoreBlocked.error.code).toBe('E_CANCELLED');expect(await readFile(resolve(vault,'Shared.md'),'utf8')).toBe('first window');
+      288 | });
+        at D:\NoteBase\repository\notebase-starter\tests\desktop\storage.spec.ts:285:90
+
+    Tearing down "desktopPage" exceeded the test timeout of 60000ms.
+
+    Error Context: test-results\desktop\storage-成员四第二窗口读写共享库且禁止切库，两个窗口内容不互相覆盖\error-context.md
+
+  1 failed
+    tests\desktop\storage.spec.ts:276:1 › 成员四第二窗口读写共享库且禁止切库，两个窗口内容不互相覆盖 ────────────────────────────
+  1 passed (1.4m)

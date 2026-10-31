@@ -11,6 +11,20 @@ struct Shell {
     handle: tauri::AppHandle,
 }
 type Shared = Arc<Shell>;
+fn same_vault_path(current: &serde_json::Value, requested: &serde_json::Value) -> bool {
+    let (Some(current), Some(requested)) = (current.as_str(), requested.as_str()) else {
+        return false;
+    };
+    // The native picker returns a normal path; the active vault may use \\?\.
+    // Compare filesystem identities before applying the multi-window switch guard.
+    match (
+        std::fs::canonicalize(current),
+        std::fs::canonicalize(requested),
+    ) {
+        (Ok(current), Ok(requested)) => current == requested,
+        _ => false,
+    }
+}
 fn execute_data_task(
     app: &Shared,
     mut task: notebase_core::application::DataTask,
@@ -76,7 +90,7 @@ async fn dispatch(expected: &str, request: Request, app: Shared) -> Response {
             if core.data_task_active() && request.command == "settings_set" { return failure("E_CANCELLED", "后台任务执行中，请稍后修改设置"); }
             if app.handle.webview_windows().len()>1 && (request.command=="vault_open" || (request.command=="settings_set" && request.payload["values"].get("vaultPath").is_some())) {
                 let info=core.dispatch(Request{id:"shell-vault".into(),command:"vault_info".into(),payload:serde_json::json!({}),client_seq:0});
-                let same=matches!(info,Response::Ok{data,..} if request.command=="vault_open" && data["vaultPath"]==request.payload["path"]);
+                let same=matches!(info,Response::Ok{data,..} if request.command=="vault_open" && same_vault_path(&data["vaultPath"],&request.payload["path"]));
                 if !same { return failure("E_CANCELLED","切换或迁移笔记库前请先关闭其他窗口，避免丢失未保存内容"); }
             }
             let new_shortcut=request.payload["values"]["keymap"]["globalQuickNote"].as_str().map(str::to_owned);
