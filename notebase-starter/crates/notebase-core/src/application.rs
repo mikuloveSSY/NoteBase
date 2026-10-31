@@ -20,6 +20,7 @@ pub struct App {
     support: Option<SupportFactory>,
     events: Option<NoteEvents>,
     location: Option<Box<dyn VaultLocation>>,
+    settings: Option<Box<dyn crate::settings::SettingsStore>>,
 }
 impl App {
     pub fn new(factory: StoreFactory) -> Self {
@@ -31,6 +32,7 @@ impl App {
             support: None,
             events: None,
             location: None,
+            settings: None,
         }
     }
     pub fn with_index(mut self, factory: IndexFactory) -> Self {
@@ -39,6 +41,10 @@ impl App {
     }
     pub fn with_location(mut self, location: Box<dyn VaultLocation>) -> Self {
         self.location = Some(location);
+        self
+    }
+    pub fn with_settings(mut self, settings: Box<dyn crate::settings::SettingsStore>) -> Self {
+        self.settings = Some(settings);
         self
     }
     pub fn with_support(mut self, factory: SupportFactory) -> Self {
@@ -90,24 +96,38 @@ impl App {
         Ok(NoteService::new(store, files, state))
     }
     fn settings_get(&self, p: &Value) -> Result<Value> {
-        if let Some(keys) = p.get("keys") {
-            if keys
-                .as_array()
-                .is_none_or(|keys| keys.iter().any(|key| key.as_str() != Some("vaultPath")))
-            {
-                return Err(AppError::new("E_PATH_INVALID", "当前只支持 vaultPath 设置"));
-            }
-        }
-        let path = match &self.notes {
-            Some(notes) => Some(notes.store.vault_path()),
-            None => self
-                .location
+        let mut values = self
+            .settings
+            .as_ref()
+            .map(|s| s.read())
+            .transpose()?
+            .unwrap_or_else(crate::settings::defaults);
+        values["vaultPath"] = json!(if let Some(notes) = &self.notes {
+            Some(notes.store.vault_path())
+        } else {
+            self.location
                 .as_ref()
-                .map(|location| location.configured_path())
+                .map(|l| l.configured_path())
                 .transpose()?
-                .flatten(),
-        };
-        Ok(json!({"values":{"vaultPath":path}}))
+                .flatten()
+        });
+        if let Some(keys) = p.get("keys") {
+            let keys = keys
+                .as_array()
+                .ok_or_else(|| AppError::new("E_PATH_INVALID", "keys 必须是数组"))?;
+            let mut selected = serde_json::Map::new();
+            for key in keys {
+                let key = key
+                    .as_str()
+                    .ok_or_else(|| AppError::new("E_PATH_INVALID", "设置键必须是字符串"))?;
+                selected.insert(
+                    key.to_owned(),
+                    values.get(key).cloned().unwrap_or(Value::Null),
+                );
+            }
+            values = Value::Object(selected);
+        }
+        Ok(json!({"values":values}))
     }
     fn migrate(&mut self, p: &Value) -> Result<Value> {
         let values = p
@@ -147,17 +167,42 @@ impl App {
     fn handle(&mut self, command: &str, p: &Value) -> Result<Value> {
         match command {
             "settings_get" => return self.settings_get(p),
-            "settings_set" => return self.migrate(p),
+            "settings_set" => {
+                let values = p
+                    .get("values")
+                    .and_then(Value::as_object)
+                    .ok_or_else(|| AppError::new("E_PATH_INVALID", "values 必须是对象"))?;
+                if values.contains_key("vaultPath") {
+                    return self.migrate(p);
+                }
+                self.settings
+                    .as_ref()
+                    .ok_or_else(|| AppError::new("E_INTERNAL", "未配置设置存储"))?
+                    .update(&p["values"])?;
+                return Ok(json!({"ok":true}));
+            }
             "vault_open" => {
                 let store = (self.factory)(field(p, "path")?)?;
                 let vault = store.vault_path();
                 let count = store.list(&RelPath::root())?.len();
                 let id = content_hash(vault.as_bytes())[7..23].to_owned();
-                let notes = self.assemble_notes(store, &id)?;
+
                 let same = self
                     .notes
                     .as_ref()
                     .is_some_and(|old| old.store.vault_path() == vault);
+                // Reopening a shared vault must retain every client's save baseline.
+                if same {
+                    if !self.index.as_ref().is_some_and(|index| index.refresh()) {
+                        self.index = None;
+                        self.index = self
+                            .index_factory
+                            .as_ref()
+                            .map(|factory| factory(&vault, &id));
+                    }
+                    return Ok(json!({"vaultId":id,"noteCount":count,"warnings":[]}));
+                }
+                let notes = self.assemble_notes(store, &id)?;
                 let reused = self
                     .index
                     .as_ref()

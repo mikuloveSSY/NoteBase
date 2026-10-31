@@ -1,19 +1,21 @@
-# NoteBase 主干基础工程
+# NoteBase 成员四集成工程
 
-这是四人小组的共同工程，当前软件版本 **0.6.0**。主干已整合成员一的搜索、增量索引、文件监视、重建与迁移，以及成员二的自动保存、恢复和知识组织。接口与本轮验证见[成员二主干合并验证](docs/成员二主干合并验证.md)。
+这是四人小组的共同工程。本分支在 **0.6.0 主干**上整合成员二的笔记/链接服务，并完成成员四的 UI、外壳、日志和 Windows 集成验证；软件版本保留 0.6.0，未正式发布。职责、基线和后续接口见 [成员四交接](docs/成员四交接.md)。
 
 ## 现在具备什么
 
 - Tauri 2 桌面入口、Rust 核心、TypeScript 与 Vite 前端、CodeMirror 6 编辑器。
-- 笔记库打开、文件枚举、新建、读取、手动及自动保存、持久草稿与显式恢复、软删除与回收站恢复。桌面模式操作真实 `.md` 文件。
-- 属性、标签/层级标签、收藏/置顶、模板和附件插入；真实双链、反链、提及转换、可恢复重命名与受限关系图谱。
+- 笔记库打开、文件枚举、新建、读取与手动保存。桌面模式操作真实 `.md` 文件。
 - 请求与响应信封、已有 23 个命令名称的入口注册。未实现命令返回 `E_INTERNAL` 并说明未实现，不返回假数据。
 - 同名文件自动加序号；保存采用同目录临时文件和原子替换；保存去除 UTF-8 BOM 并保留 LF/CRLF 风格；保存前检查内容哈希，拒绝外部修改后的覆盖。
 - 新建标题自动修正非法字符和系统保留名；非法 UTF-8、只读文件和超过 10 MiB 的文件以只读方式展示，大文件仅预览前 256 KiB。列表可继续加载后续分页。
 - 基础路径校验，拒绝越界路径、系统保留名和符号链接。编辑器保留完整原文，属性面板可显式更新frontmatter，非法或重复YAML拒绝改写。
 - 浏览器联调模式，仅使用内存数据，刷新即重置；界面会显著标注。浏览器模式不能验证真实磁盘写入。
 
-**后续接入**：Markdown预览、导出、版本快照/备份、同步、其余设置及多窗口。链接查询按权威文件计算，未完成10万篇规模验收。
+- 已整合成员二：2 秒空闲/10 秒连续输入自动保存、500ms 草稿调度、恢复、外部冲突显式处理、属性/标签/模板/附件、回收站、双链/反链/提及/重命名及关系图。
+- 已补齐成员四：主题、编辑偏好、快捷键、命令面板、轻量标签页与恢复、同库多窗口、原生菜单、Windows 全局快捷键适配和本地脱敏日志。
+
+**尚未完成**：Markdown 预览、导出、版本历史、备份、同步等待成员三交付；完整角色布局、安装卸载、跨平台和规模性能仍需验收。没有完成整套需求验收。
 
 ## Windows 首次启动
 
@@ -53,20 +55,24 @@ npm run test:e2e
 # Windows 桌面编译与真实 IPC 回归
 npm run desktop:build -- --no-bundle
 npm run test:desktop
-# 可选 Windows 桌面安装包（本版未验收）
+# Windows NSIS 安装包（已生成，未验收安装/卸载）
 npm run desktop:build
+# 便携测试包，要求已构建 release
+./scripts/package-portable.ps1
+# 在已安装依赖和 Edge 的 Windows 开发环境执行完整检查
+./scripts/verify.ps1
 ```
 
-Windows 可执行文件输出到 `src-tauri/target/release/notebase.exe`。桌面测试使用独立临时笔记库及 WebView2 配置，不操作日常笔记。浏览器回归可设置 PowerShell 环境变量 `$env:PLAYWRIGHT_CHANNEL='msedge'` 使用已安装 Edge。Windows 安装包目标为 NSIS，默认输出到 `src-tauri/target/release/bundle/nsis/`；本版未验收安装包、macOS/Linux。
+Windows 可执行文件输出到 `src-tauri/target/release/notebase.exe`。桌面测试使用独立临时笔记库及 WebView2 配置，不操作日常笔记。浏览器回归可设置 PowerShell 环境变量 `$env:PLAYWRIGHT_CHANNEL='msedge'` 使用已安装 Edge。Windows 安装包目标为 NSIS，输出到 `src-tauri/target/release/bundle/nsis/`；已验证打包生成，未验证安装/卸载及 macOS/Linux。便携包输出 `dist-delivery/`，仍需系统 WebView2，不自带运行库。
 
 ## 四个人从哪里开始
 
 | 成员 | 当前入口 | 接下来先做的一件事 |
 |---|---|---|
-| 一 存储与检索 | `crates/notebase-core/src/infra.rs`、`domain.rs` | 搜索、增量队列、watcher和重建迁移已接入；继续性能和并发优化 |
-| 二 编辑与知识组织 | `src/note_service.rs`、`src/links.rs`（相对 core crate） | 已与主干增量索引和迁移接通，继续对接快照及团队界面 |
+| 一 存储与检索 | `crates/notebase-core/src/infra.rs`、`index/` | 已交付到 0.6.0 重建/迁移；后续完善并发、路径竞态及规模性能 |
+| 二 编辑与知识组织 | `note_service.rs`、`links.rs`、`src/editor-session.ts` | 本分支已合入其交付；复核多窗口与索引联调，继续维护 note/link 业务 |
 | 三 导出与数据保障 | Rust 核心的应用层与基础设施层扩展位置 | 先实现 renderer 端口和 comrak，供预览与导出共用，再做备份及版本快照 |
-| 四 界面与集成 | `src/`、`src-tauri/` | 保持现有读写闭环可用，逐项连接其余服务；统一维护 IPC、界面、日志和打包 |
+| 四 界面与集成 | `src/`、`src-tauri/`、`settings.rs`、`logger.rs` | 本分支已完成当前可接入服务；接收成员三后补预览、数据保障 UI 及最终整体验收 |
 
 详细职责边界见 `docs/团队开发指南.md`。`src/contracts.ts` 和 Rust `domain.rs` 是双方共享约定，变更时一起修改、一起评审。
 
@@ -79,9 +85,9 @@ Windows 可执行文件输出到 `src-tauri/target/release/notebase.exe`。桌�
 
 ## 当前验证边界
 
-主干0.6原实现验证见[重建迁移交接](docs/重建迁移交接-v0.6.0.md)，成员二原实现见[成员二验证](docs/成员二验证记录.md)，合并后的实际结果见[合并验证](docs/成员二主干合并验证.md)。
+本分支已通过核心 132 项、前端单元 21 项、浏览器 15 项、真实 Windows 桌面 16 项，共 184 项；Clippy、构建与 NSIS 打包见 [成员四验证记录](docs/成员四验证记录.md)。旧版本记录和成员二原记录仅作为历史证据，不能替代当前集成验证。
 
-NoteStore字节接口与SQL模式保持不变。笔记实际文件变动已接入增量索引，indexQueued仅表示已接收；快照尚未接入时snapshotCreated=false。全库枚举、App串行锁和外部并发写入竞态仍需后续完善；不宣称大库性能达标。
+NoteStore 已提供 RelPath 等值对象及 read、write_atomic、create_new、rename、delete、list、stat；原始字节读写签名仍需与成员二对齐。底层重命名、删除不代表对应业务命令已实现。初始索引、增量队列与 watcher 已接入，保存响应 indexQueued 表示任务接收；快照仍未接入，snapshotCreated=false。全库枚举、全局串行锁和路径竞态仍需完善；没有完成 10 万篇性能验收。接口取舍和需求状态见 [存储初版交接](docs/存储初版交接.md)。
 
 ## 技术资料
 

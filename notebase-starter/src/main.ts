@@ -6,15 +6,17 @@ import { EditorSession, replaceUtf8Range, type SessionState } from './editor-ses
 import type { NoteContent, NoteEntry, SaveResult, IndexStatus, DraftEntry, TrashEntry, RenamePlan, Backlink, Mention, LinkResolution, GraphData, AttachmentResult, Command, SearchPage, SearchHit, IndexRebuildResult, VaultSettings } from './contracts';
 import { transportEventName } from './contracts';
 import { version } from '../package.json';
+import { mountShell } from './shell-ui';
+import { restoreWorkspace, type Preferences } from './preferences';
 import './style.css';
+import './shell.css';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = [
   '<aside><div class="brand"><b>N</b><div>NoteBase<small>本地优先 · Markdown</small></div></div>',
   '<label class="field">笔记库目录<input id="vaultPath" placeholder="例如 D:\\Notes" aria-label="笔记库绝对路径"></label><button id="open">打开已有文件夹</button>',
+  '<label class="field">搜索笔记<input id="searchQuery" aria-label="搜索笔记" placeholder="关键词、title:标题、tag:标签"></label><div class="compact-actions"><button id="searchButton">搜索</button><button id="rebuild">后台重建索引</button></div><details><summary>搜索筛选</summary><label class="field">路径前缀<input id="searchPath"></label><label class="field">标签<input id="searchTag"></label><label class="field">排序<select id="searchSort"><option value="relevance">相关性</option><option value="mtime">最近修改</option></select></label></details><div id="searchInfo" role="status" aria-live="polite"></div><nav id="searchResults" aria-label="搜索结果"></nav><button id="searchMore" hidden>更多搜索结果</button><button id="migrate">迁移笔记库目录</button><p id="indexWarning" role="alert" hidden></p>',
   '<div class="section-title">笔记 <button id="new" aria-label="新建笔记">＋ 新建</button></div>',
   '<details class="new-options"><summary>新建目录与模板</summary><label class="field">目录<input id="newDir" placeholder="留空为根目录"></label><label class="field">模板<select id="template"><option value="">空白笔记</option></select></label><small id="templateStatus"></small></details>',
-  '<button id="rebuild">后台重建索引</button><button id="migrate">迁移笔记库目录</button><p id="indexWarning" class="muted" role="status" hidden></p>',
-  '<label class="field">搜索笔记<input id="searchQuery" aria-label="搜索笔记" placeholder="关键词、title:标题、tag:标签"></label><button id="searchButton">搜索</button><div id="searchInfo" role="status"></div><nav id="searchResults" aria-label="搜索结果"></nav><button id="searchMore" hidden>更多搜索结果</button>',
   '<label class="check"><input type="checkbox" id="favoriteFilter">仅收藏</label><label class="check"><input type="checkbox" id="groupTree" checked>按目录分组</label>',
   '<nav id="notes" aria-label="笔记列表"></nav><button id="more" hidden>加载更多笔记</button><button id="refresh">刷新文件列表</button>',
   '<div class="sidebar-foot">文件是唯一数据源<br>主干版本 ' + version + '</div></aside>',
@@ -31,13 +33,13 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = [
   '<details open><summary>启动草稿恢复</summary><p class="muted">恢复时若磁盘已变化，将保留为副本。</p><button id="draftsRefresh">刷新草稿</button><div id="drafts" class="panel-list">尚未打开库</div></details>',
   '<details><summary>回收站</summary><button id="trashRefresh">刷新回收站</button><div id="trash" class="panel-list"></div></details>',
   '<details><summary>未完成重命名</summary><button id="renamesRefresh">刷新任务</button><div id="renames" class="panel-list"></div></details>',
-  '<p class="muted">当前提供源文编辑与只读链接数据；预览、导出及多窗口由对应成员接入。</p></aside>',
+  '<p class="muted">当前提供源文编辑与只读链接数据；预览、导出与数据保障等待成员三接入。</p></aside>',
   '<dialog id="conflictDialog" aria-labelledby="conflictTitle"><h2 id="conflictTitle">外部修改冲突</h2><p id="conflictMessage"></p><p>自动保存已暂停。本地文本保留，请明确选择一种处理方式。</p><div class="dialog-actions"><button data-choice="local">保留本地并覆盖</button><button data-choice="disk">使用磁盘内容</button><button data-choice="copy">另存冲突副本</button></div><button id="conflictLater">稍后处理（保持暂停）</button></dialog>',
   '<dialog id="renameDialog" aria-labelledby="renameTitle"><h2 id="renameTitle">确认重命名与链接更新</h2><div id="renameDetails"></div><div class="dialog-actions"><button id="renameConfirm" class="primary">确认执行</button><button id="renameCancel">取消</button></div></dialog>',
   '<dialog id="targetDialog" aria-labelledby="targetTitle"><h2 id="targetTitle">选择链接目标</h2><div id="targetCandidates"></div><button id="targetClose">关闭</button></dialog>',
 ].join('');
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-let active: NoteContent | null = null, busy = false, opened = false, loading = false, switching = false;
+let active: NoteContent | null = null, busy = false, opened = false, loading = false, switching = false, bootReady = false;
 let nextCursor: string | null = null, entries: NoteEntry[] = [];
 let vaultGeneration = 0, externalTreeDirty = false;
 let searchCursor: string | null = null, searchText = '';
@@ -46,7 +48,9 @@ const tabs = new Set<string>();
 let lastSave: SaveResult | null = null, lastError: unknown = null, conflictKey = '', lastFrontmatter: unknown = null;
 let pendingRename: { plan: RenamePlan; path: string; newName: string } | null = null;
 const editable = new Compartment();
-const view = new EditorView({ parent: $('editor'), extensions: [basicSetup, markdown(), editable.of([EditorView.editable.of(false), EditorState.readOnly.of(true)]), EditorView.updateListener.of(u => { if (u.docChanged && !loading) session.edit(u.state.doc.toString()); })] });
+const editorPreferences = new Compartment();
+let vaultIdentity = '', windowLabel = 'main', restoringWorkspace = false;
+const view = new EditorView({ parent: $('editor'), extensions: [basicSetup, markdown(), editorPreferences.of([]), editable.of([EditorView.editable.of(false), EditorState.readOnly.of(true)]), EditorView.updateListener.of(u => { if (u.docChanged && !loading) session.edit(u.state.doc.toString()); })] });
 const session = new EditorSession({
   save: s => vaultCall<SaveResult>('note_save', { path: s.path, body: s.body, baseHash: s.baseHash, expectedMtimeMs: s.expectedMtimeMs }),
   draft: s => vaultCall('note_save', { action: 'draft', path: s.path, body: s.body, baseHash: s.baseHash }),
@@ -67,10 +71,10 @@ function update() {
   $('dirty').textContent = active ? active.readOnly ? '只读' : s.paused ? '冲突暂停 · 本地保留' : s.dirty ? '有未保存修改' : '已保存' : '未打开';
   $<HTMLButtonElement>('save').disabled = !active || !s.dirty || s.saving || s.paused || active.readOnly || switching;
   for (const id of ['new', 'more', 'refresh']) $<HTMLButtonElement>(id).disabled = !opened || busy;
-  $<HTMLButtonElement>('open').disabled = busy;
-  for (const id of ['rebuild', 'migrate', 'searchButton', 'searchMore']) $<HTMLButtonElement>(id).disabled = !opened || busy || !desktopMode;
+  $<HTMLButtonElement>('open').disabled = busy || !bootReady;
+  $<HTMLInputElement>('vaultPath').disabled = busy || !desktopMode || !bootReady;
+  for (const id of ['rebuild', 'migrate', 'searchButton', 'searchMore']) $<HTMLButtonElement>(id).disabled = busy || !opened || !desktopMode;
   $<HTMLInputElement>('searchQuery').disabled = !opened || busy || !desktopMode;
-  $<HTMLInputElement>('vaultPath').disabled = busy || !desktopMode;
   for (const id of ['rename', 'delete', 'propertiesSave']) $<HTMLButtonElement>(id).disabled = !active || busy || s.saving || s.paused || active.readOnly || (id === 'propertiesSave' && !!active.frontmatterError);
   $<HTMLInputElement>('attachment').disabled = !active || active.readOnly || switching;
   $('showConflict').hidden = !s.conflict;
@@ -86,7 +90,7 @@ function sync(s: SessionState) {
     tabs.add(active.path); showReadNotice(active);
     if (lastFrontmatter !== active.frontmatter) { lastFrontmatter = active.frontmatter; fillProperties(active); }
   } else { $('readNotice').hidden = true; lastFrontmatter = null; }
-  if (oldPath !== active?.path) { renderTabs(); markSelected(); }
+  if (oldPath !== active?.path) { renderTabs(); markSelected(); persistWorkspace(); }
   if (s.error && s.error !== lastError) { lastError = s.error; status(s.error.message, true); }
   if (s.lastSave && s.lastSave !== lastSave) { lastSave = s.lastSave; status(s.lastSave.warnings?.join('；') || '已写入磁盘'); }
   $('externalNotice').hidden = !s.paused;
@@ -127,6 +131,7 @@ async function list(reset = true) {
 }
 function renderTabs() {
   const nav = $('tabs'); nav.replaceChildren();
+  persistWorkspace();
   for (const path of tabs) {
     const group = document.createElement('span'); group.className = path === active?.path ? 'tab selected' : 'tab';
     const open = button(path.split('/').at(-1)!, () => void run(() => read(path))); open.setAttribute('aria-label', '打开 ' + path);
@@ -166,14 +171,23 @@ async function releaseVault() {
   switching = true; update();
   // Lock input before flushing, and close while all queued writes still target the old vault.
   if (!await flush() || !await session.close()) return false;
-  resetVaultView(); return true;
+  persistWorkspace(); vaultIdentity = ''; resetVaultView(); return true;
 }
 async function open() {
   if (!await releaseVault()) return;
   await call('vault_open', { path: $<HTMLInputElement>('vaultPath').value });
   opened = true;
   if (desktopMode) { const info = await vaultCall<{ vaultPath: string }>('vault_info'); $<HTMLInputElement>('vaultPath').value = info.vaultPath; }
-  await list(); status('笔记库已打开'); void loadRecovery(); void loadTemplates();
+  vaultIdentity = desktopMode ? $<HTMLInputElement>('vaultPath').value : 'demo';
+  if (desktopMode) localStorage.setItem('notebase-last-vault', vaultIdentity);
+  await list();
+  restoringWorkspace = true;
+  try {
+    const restored = restoreWorkspace(localStorage.getItem(workspaceKey()));
+    for (const path of restored.tabs) tabs.add(path);
+    if (restored.active) { try { await read(restored.active); } catch { tabs.delete(restored.active); } }
+  } finally { restoringWorkspace = false; renderTabs(); }
+  status('笔记库已打开'); void loadRecovery(); void loadTemplates();
 }
 async function migrate() {
   const target = prompt('迁移到新的绝对目录（目标必须不存在）。校验后切换，原目录会完整保留。');
@@ -183,6 +197,7 @@ async function migrate() {
   $<HTMLInputElement>('vaultPath').value = target; opened = true;
   const settings = await vaultCall<{ values: VaultSettings }>('settings_get', { keys: ['vaultPath'] });
   $<HTMLInputElement>('vaultPath').value = settings.values.vaultPath ?? target;
+  vaultIdentity = $<HTMLInputElement>('vaultPath').value;
   await list(); status('迁移完成，已切换到新目录；原目录完整保留。'); void loadRecovery(); void loadTemplates();
 }
 async function save() { if (!active || active.readOnly || switching) return; if (await session.save()) void loadLinks(); }
@@ -346,10 +361,10 @@ view.dom.addEventListener('drop', e => { const files = Array.from(e.dataTransfer
 view.dom.addEventListener('paste', e => { const files = Array.from(e.clipboardData?.files ?? []); if (files.length && active && !active.readOnly) { e.preventDefault(); void addFiles(files); } });
 $('draftsRefresh').addEventListener('click', () => void loadDrafts()); $('trashRefresh').addEventListener('click', () => void loadTrash()); $('renamesRefresh').addEventListener('click', () => void loadRenames()); $('linksRefresh').addEventListener('click', () => void loadLinks());
 $('graphRefresh').addEventListener('click', () => void loadGraph()); $('graphZoomIn').addEventListener('click', () => { graphZoom = Math.min(4, graphZoom * 1.25); renderGraph(); }); $('graphZoomOut').addEventListener('click', () => { graphZoom = Math.max(0.5, graphZoom / 1.25); renderGraph(); });
-document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); void save(); } });
+
 // Browsers cannot await unload. Start flush and retain the native unsaved-changes guard.
 window.addEventListener('beforeunload', e => { if (session.state.dirty || session.state.paused || session.state.saving) { void session.flush(); e.preventDefault(); e.returnValue = ''; } });
-if (desktopMode) { void import('@tauri-apps/api/window').then(({ getCurrentWindow }) => { const win = getCurrentWindow(); let closing = false; return win.onCloseRequested(async e => { if (closing) return; e.preventDefault(); if (busy || !await flush()) return; closing = true; await win.close(); }); }).catch(error => status('窗口关闭保护不可用：' + message(error), true)); }
+if (desktopMode) { void import('@tauri-apps/api/window').then(({ getCurrentWindow }) => { const win = getCurrentWindow(); let closing = false; return win.onCloseRequested(async e => { if (closing) return; e.preventDefault(); if (busy || !await flush()) return; persistWorkspace(); closing = true; await win.close(); }); }).catch(error => status('窗口关闭保护不可用：' + message(error), true)); }
 window.setInterval(() => { if (opened && !switching) session.tick(); }, 100);
 window.setInterval(() => { if (opened && active && !switching) void session.checkExternal(); }, 2000);
 // Search snippets contain escaped text and exact <b> markers. Only create text and mark nodes.
@@ -381,7 +396,7 @@ async function searchNotes(more = false) {
     if (!desktopMode || !opened) throw new Error('全文检索需要打开桌面文件库');
     if (more && !searchCursor) return;
     const generation = vaultGeneration, query = more ? searchText : $<HTMLInputElement>('searchQuery').value;
-    const result = await vaultCall<SearchPage>('search', { query, limit: 50, sort: 'relevance', cursor: more ? searchCursor : null });
+    const result = await vaultCall<SearchPage>('search', { query, limit: 50, sort: $<HTMLSelectElement>('searchSort').value, cursor: more ? searchCursor : null, filters: { pathPrefix: $<HTMLInputElement>('searchPath').value || undefined, tags: $<HTMLInputElement>('searchTag').value.split(/[,，]/).map(s => s.trim()).filter(Boolean) } });
     if (!more) $('searchResults').replaceChildren();
     for (const item of result.items) {
       const b = button('', () => void run(async () => {
@@ -399,7 +414,7 @@ async function searchNotes(more = false) {
       b.title = snippet.textContent ?? ''; b.append(label, snippet); $('searchResults').append(b);
     }
     searchText = query; searchCursor = result.nextCursor; $('searchMore').hidden = !searchCursor;
-    $('searchInfo').textContent = result.totalApprox + ' 条结果' + (result.degraded ? ' · 短查询扫描' : '');
+    $('searchInfo').textContent = result.totalApprox + ' 条结果' + (result.degraded ? result.degradeReason?.startsWith('index_rebuilding') ? ' · 索引重建中，结果可能不完整' : ' · 短查询扫描' : '');
   });
 }
 $('searchButton').addEventListener('click', () => void searchNotes()); $('searchMore').addEventListener('click', () => void searchNotes(true));
@@ -434,4 +449,47 @@ async function pollIndex() {
   }
   window.setTimeout(() => void pollIndex(), 1000);
 }
-update(); if (!desktopMode) void run(open); void pollIndex();
+
+function workspaceKey() { return 'notebase-workspace:' + windowLabel + ':' + vaultIdentity; }
+function persistWorkspace() {
+  if (!vaultIdentity || restoringWorkspace) return;
+  try { localStorage.setItem(workspaceKey(), JSON.stringify({ tabs: [...tabs].slice(-100), active: active?.path ?? null })); }
+  catch { status('无法记录标签页布局；笔记内容不受影响', true); }
+}
+async function newWindow() {
+  if (!desktopMode || !opened) { status('请先打开桌面笔记库'); return; }
+  if (!await flush()) return;
+  const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+  const { getAllWindows } = await import('@tauri-apps/api/window');
+  const windows = await getAllWindows(); let slot = 1; while (windows.some(w => w.label === 'note-' + slot)) slot++;
+  const win = new WebviewWindow('note-' + slot, { url: 'index.html?vault=' + encodeURIComponent(vaultIdentity), title: 'NoteBase · 笔记窗口', width: 1280, height: 820, minWidth: 800, minHeight: 600 });
+  await win.once('tauri://error', event => status('新窗口创建失败：' + String(event.payload), true));
+}
+function applyEditorPreferences(value: Preferences) {
+  view.dispatch({ effects: editorPreferences.reconfigure([
+    EditorState.tabSize.of(value.editor.tabSize), ...(value.editor.wordWrap ? [EditorView.lineWrapping] : []),
+    EditorView.theme({ '&': { fontSize: value.editor.fontSize + 'px' }, '.cm-content': { maxWidth: value.editor.lineWidth + 'ch' }, '.cm-scroller': { color: 'var(--text)' } }),
+  ]) });
+}
+async function boot() {
+  if (desktopMode) { const { getCurrentWindow } = await import('@tauri-apps/api/window'); windowLabel = getCurrentWindow().label; }
+  const clickAction = (id: string, label: string) => ({ id, label, run: () => $(id).click(), available: () => !($<HTMLButtonElement>(id).disabled) });
+  await mountShell([
+    clickAction('new', '新建笔记'), { id: 'search', label: '搜索笔记', run: () => $('searchQuery').focus() },
+    { id: 'save', label: '保存当前笔记', run: save, available: () => !!active && !active.readOnly },
+    { id: 'nextTab', label: '切换到下一标签页', run: () => run(async () => { const paths = [...tabs]; if (paths.length) await read(paths[(paths.indexOf(active?.path ?? '') + 1) % paths.length]); }) },
+    { id: 'newWindow', label: '新建笔记窗口', run: newWindow, available: () => desktopMode && opened },
+    ...[['open', '打开笔记库'], ['refresh', '刷新文件列表'], ['rename', '重命名笔记'], ['delete', '移到回收站'], ['rebuild', '后台重建索引'], ['migrate', '迁移笔记库目录'], ['linksRefresh', '刷新反向链接'], ['draftsRefresh', '查看恢复草稿'], ['trashRefresh', '查看回收站'], ['graphRefresh', '加载关系图谱']].map(([id, label]) => clickAction(id, label)),
+  ], applyEditorPreferences, status);
+  update();
+  if (desktopMode) {
+    const requested = new URLSearchParams(location.search).get('vault');
+    const stored = await call<{ values: { vaultPath: string | null } }>('settings_get', { keys: ['vaultPath'] }).catch(() => null);
+    $<HTMLInputElement>('vaultPath').value = requested ?? stored?.values.vaultPath ?? localStorage.getItem('notebase-last-vault') ?? '';
+    bootReady = true; update();
+    if ($<HTMLInputElement>('vaultPath').value) await run(open);
+  } else { bootReady = true; update(); await run(open); }
+  void pollIndex();
+}
+update();
+void boot().catch(error => { bootReady = true; update(); status('初始化失败：' + message(error), true); });

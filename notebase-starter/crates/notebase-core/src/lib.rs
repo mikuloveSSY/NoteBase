@@ -3,11 +3,13 @@ pub mod domain;
 pub mod index;
 pub mod infra;
 pub mod links;
+pub mod logger;
 pub mod migration;
 pub mod note_files;
 pub mod note_service;
 pub mod note_state;
 pub mod organization;
+pub mod settings;
 pub use application::App;
 pub use domain::{Request, Response};
 /// Disk notes with ephemeral private state, intended for tests and embedded callers.
@@ -39,6 +41,10 @@ pub fn new_stateful_app(data_root: std::path::PathBuf) -> App {
 pub fn new_indexed_app(data_root: std::path::PathBuf, events: index::worker::EventSink) -> App {
     let settings = data_root.join("settings.json");
     new_stateful_app(data_root.clone())
+        .with_settings(Box::new(settings::FileSettings(settings.clone())))
+        .with_location(Box::new(migration::LocalVaultLocation {
+            settings_path: settings,
+        }))
         .with_events(events.clone())
         .with_index(Box::new(move |vault, id| {
             Box::new(index::worker::BackgroundIndex::start(
@@ -47,9 +53,6 @@ pub fn new_indexed_app(data_root: std::path::PathBuf, events: index::worker::Eve
                 id.into(),
                 events.clone(),
             ))
-        }))
-        .with_location(Box::new(migration::LocalVaultLocation {
-            settings_path: settings,
         }))
 }
 // Failure to open private state must not make authoritative notes uneditable.
