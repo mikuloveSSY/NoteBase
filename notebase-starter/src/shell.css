@@ -12,6 +12,14 @@ button:hover { background:var(--selection); }
 .note.selected,.tab.selected { background:var(--selection); color:var(--text); }
 .tab { border:1px solid var(--muted); border-bottom-width:2px; border-radius:6px 6px 0 0; }
 .tab.selected { border-color:var(--accent); }
+dialog { position:fixed; inset:0; margin:auto; max-height:85vh; }
+dialog::backdrop { background:rgba(10,20,16,.58); }
+.input-dialog { width:min(460px,calc(100vw - 40px)); padding:24px; }
+.input-dialog label { display:block; font-size:13px; }
+.input-dialog input { font-size:14px; margin-bottom:0; }
+.input-dialog input[aria-invalid="true"],#settingsDialog [aria-invalid="true"] { border-color:var(--error); }
+.field-error { color:var(--error); font-size:12px; line-height:1.6; margin:6px 0 0; overflow-wrap:anywhere; }
+.input-dialog .dialog-actions { justify-content:flex-end; margin-bottom:0; }
 .cm-gutters { background:var(--sidebar)!important; color:var(--muted)!important; }
 .cm-activeLine,.cm-activeLineGutter { background:var(--selection)!important; }
 .cm-cursor { border-left-color:var(--text)!important; }

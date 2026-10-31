@@ -13,10 +13,11 @@ import './shell.css';
 import './member3.css';
 import { mountDataTools } from './member3';
 import { chooseVaultFolder } from './vault-dialog';
+import { inputDialog, requiredText, absoluteDirectory } from './input-dialog';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = [
-  '<aside class="library-sidebar"><button id="open" class="primary">选择笔记库文件夹…</button>',
-  '<details id="sidebarTools" class="sidebar-tools"><summary>笔记库工具</summary><div class="sidebar-tools-content"><div class="brand"><b>N</b><div>NoteBase<small>本地优先 · Markdown</small></div></div><label class="field">笔记库路径（也可手动输入）<input id="vaultPath" placeholder="选择文件夹后自动填入" aria-label="笔记库绝对路径"></label><button id="openPath">按路径打开</button>',
+  '<aside class="library-sidebar"><div class="brand"><b>N</b><div>NoteBase<small>本地优先 · Markdown</small></div></div><button id="open" class="primary">选择笔记库文件夹…</button>',
+  '<details id="sidebarTools" class="sidebar-tools"><summary>笔记库工具</summary><div class="sidebar-tools-content"><label class="field">笔记库路径<input id="vaultPath" placeholder="选择文件夹后自动填入" aria-label="笔记库绝对路径"></label><button id="openPath">按路径打开</button>',
   '<label class="field">搜索笔记<input id="searchQuery" aria-label="搜索笔记" placeholder="关键词、title:标题、tag:标签"></label><div class="compact-actions"><button id="searchButton">搜索</button><button id="rebuild">后台重建索引</button></div><details><summary>搜索筛选</summary><label class="field">路径前缀<input id="searchPath"></label><label class="field">标签<input id="searchTag"></label><label class="field">排序<select id="searchSort"><option value="relevance">相关性</option><option value="mtime">最近修改</option></select></label></details><div id="searchInfo" role="status" aria-live="polite"></div><nav id="searchResults" aria-label="搜索结果"></nav><button id="searchMore" hidden>更多搜索结果</button><button id="migrate">迁移笔记库目录</button><p id="indexWarning" role="alert" hidden></p>',
   '<div class="section-title">笔记 <button id="new" aria-label="新建笔记">＋ 新建</button></div>',
   '<details class="new-options"><summary>新建目录与模板</summary><label class="field">目录<input id="newDir" placeholder="留空为根目录"></label><label class="field">模板<select id="template"><option value="">空白笔记</option></select></label><small id="templateStatus"></small></details>',
@@ -206,9 +207,18 @@ async function chooseAndOpenVault() {
   if (path !== null) await open(path);
 }
 async function migrate() {
-  const target = prompt('迁移到新的绝对目录（目标必须不存在）。校验后切换，原目录会完整保留。');
-  if (target === null || !await releaseVault()) return;
-  await call('settings_set', { values: { vaultPath: target } });
+  const chosen = await inputDialog({ title: '迁移笔记库', label: '目标文件夹', hint: '请输入新的绝对路径，目标必须不存在。校验后切换，原目录完整保留。', validate: absoluteDirectory, submit: async value => {
+    if (!await flush()) throw new Error('当前笔记尚未保存，请先处理保存问题');
+    switching = true; update();
+    try { await call('settings_set', { values: { vaultPath: value.trim() } }); }
+    catch (error) { switching = false; update(); throw error; }
+    return value.trim();
+  } });
+  if (!chosen) return;
+  const target = chosen.result;
+  // The modal held input inert and flush completed before migration. Close the
+  // clean old session only after success so rejected paths retain the old view.
+  await session.close(); persistWorkspace(); vaultIdentity = ''; resetVaultView();
   // The backend has switched. Even if the subsequent settings read fails, no old handles remain.
   $<HTMLInputElement>('vaultPath').value = target; opened = true;
   const settings = await vaultCall<{ values: VaultSettings }>('settings_get', { keys: ['vaultPath'] });
@@ -293,8 +303,10 @@ async function loadRenames() {
 }
 async function loadRecovery() { await Promise.allSettled([loadDrafts(), loadTrash(), loadRenames()]); }
 async function rename() {
-  if (!active || !await flush()) return; const path = active.path, newName = prompt('新的笔记名称', path.split('/').at(-1)!.replace(/\.md$/i, '')); if (newName === null) return;
-  const { plan } = await vaultCall<{ plan: RenamePlan }>('note_rename', { path, newName, planOnly: true }); pendingRename = { path, newName, plan };
+  if (!active || !await flush()) return; const path = active.path;
+  const chosen = await inputDialog({ title: '重命名笔记', label: '新的笔记名称', value: path.split('/').at(-1)!.replace(/\.md$/i, ''), validate: requiredText('笔记名称'), submit: newName => vaultCall<{ plan: RenamePlan }>('note_rename', { path, newName, planOnly: true }) });
+  if (!chosen) return;
+  const newName = chosen.value, { plan } = chosen.result; pendingRename = { path, newName, plan };
   const details = $('renameDetails'); details.replaceChildren(); const summary = document.createElement('p'); summary.textContent = plan.from + ' → ' + plan.to + '；' + plan.affectedFiles.length + ' 个文件，' + plan.totalReplacements + ' 处链接替换。'; details.append(summary);
   for (const file of plan.affectedFiles) { const el = row(file.path), preview = document.createElement('pre'); preview.textContent = typeof file.preview === 'string' ? file.preview : JSON.stringify(file.preview, null, 2); el.append(preview); details.append(el); }
   $<HTMLDialogElement>('renameDialog').showModal();
@@ -373,7 +385,16 @@ if (!desktopMode) $('open').textContent = '打开演示库';
 $('more').addEventListener('click', () => void run(() => list(false)));
 $('refresh').addEventListener('click', () => void run(async () => { await list(); void loadRecovery(); status('文件列表已刷新，笔记内容由外部检查独立核对'); }));
 $('favoriteFilter').addEventListener('change', () => void run(() => list())); $('groupTree').addEventListener('change', renderNotes);
-$('new').addEventListener('click', () => { if (busy) return; const title = prompt('笔记标题'); if (title === null) return; void run(async () => { if (!await flush()) return; const dir = $<HTMLInputElement>('newDir').value, templatePath = $<HTMLSelectElement>('template').value; const r = await vaultCall<{ path: string }>('note_create', { dir, title, ...(templatePath ? { templatePath } : {}) }); await list(); await read(r.path); if (r.path !== (dir ? dir + '/' : '') + title + '.md') status('文件名已修正或避开同名：' + r.path); }); });
+$('new').addEventListener('click', () => void run(async () => {
+  const dir = $<HTMLInputElement>('newDir').value, templatePath = $<HTMLSelectElement>('template').value;
+  const chosen = await inputDialog({ title: '新建笔记', label: '笔记标题', validate: requiredText('笔记标题'), submit: async title => {
+    if (!await flush()) throw new Error('当前笔记尚未保存，请先处理保存问题');
+    return vaultCall<{ path: string }>('note_create', { dir, title, ...(templatePath ? { templatePath } : {}) });
+  } });
+  if (!chosen) return;
+  const { path } = chosen.result; await list(); await read(path);
+  if (path !== (dir ? dir + '/' : '') + chosen.value + '.md') status('文件名已修正或避开同名：' + path);
+}));
 $('properties').addEventListener('submit', e => { e.preventDefault(); void run(saveProperties); });
 $('rename').addEventListener('click', () => void run(rename)); $('renameConfirm').addEventListener('click', () => void run(executeRename));
 $('renameCancel').addEventListener('click', () => { pendingRename = null; $<HTMLDialogElement>('renameDialog').close(); });

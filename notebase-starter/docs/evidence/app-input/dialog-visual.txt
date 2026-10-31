@@ -1,0 +1,21 @@
+
+> notebase-starter@0.7.0 test:e2e
+> playwright test tests/browser/input-dialog.spec.ts tests/browser/member4.spec.ts
+
+[WebServer] (node:37308) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 6 tests using 2 workers
+
+(node:43592) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:44752) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 2 tests\browser\input-dialog.spec.ts:4:1 › 应用输入弹窗居中，空标题就地提示，取消和Escape保留当前笔记 (2.8s)
+  ok 1 tests\browser\member4.spec.ts:2:1 › 侧栏工具默认收起，折叠保留编辑和文件列表，展开状态可恢复 (4.3s)
+  ok 3 tests\browser\input-dialog.spec.ts:27:1 › 重命名后端校验显示在输入框下方，修正后保留原有计划确认流程 (1.7s)
+  ok 4 tests\browser\member4.spec.ts:19:1 › 主题和编辑器偏好持久化，冲突快捷键不覆盖旧设置 (1.1s)
+  ok 5 tests\browser\member4.spec.ts:28:1 › 恢复标签页和当前笔记，缓存中不存正文 (863ms)
+  ok 6 tests\browser\member4.spec.ts:34:1 › 命令面板可全键盘操作，专注模式保留退出入口 (3.0s)
+
+  6 passed (13.2s)

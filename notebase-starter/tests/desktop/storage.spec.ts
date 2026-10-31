@@ -1,3 +1,4 @@
+import { submitInput } from '../input-dialog';
 import { test as base, expect, chromium, type Page, type Browser } from '@playwright/test';
 import { spawn, spawnSync } from 'node:child_process';
 import { access, mkdir, readFile, writeFile, readdir } from 'node:fs/promises';
@@ -159,11 +160,13 @@ test('真实桌面读取 BOM 文件 保存并重新打开', async ({ desktopPage
   await expect(page.locator('.cm-content')).toContainText('新增内容');
 });
 
-test('真实桌面新建保留名 自动修正且不覆盖同名文件', async ({ desktopPage: page, vault }) => {
+test('真实桌面新建保留名 自动修正且不覆盖同名文件', async ({ desktopPage: page, vault }, testInfo) => {
   await writeFile(resolve(vault, '_COM1.md'), '保留内容');
   await openVault(page, vault);
-  page.once('dialog', dialog => dialog.accept('COM¹'));
+  await page.getByRole('button', { name: '新建笔记' }).click();await page.locator('#inputDialogConfirm').click();await expect(page.locator('#inputDialogError')).toContainText('不能为空');
+  await page.screenshot({path:testInfo.outputPath('input-warning-desktop.png'),fullPage:true});await page.locator('#inputDialogCancel').click();expect(await readdir(vault)).toEqual(['_COM1.md']);
   await page.getByRole('button', { name: '新建笔记' }).click();
+  await submitInput(page,'COM¹');
   await expect(page.locator('#path')).toHaveText('_COM1 (2).md');
   await expect(page.locator('#status')).toContainText('文件名已修正或避开同名');
   expect(await readFile(resolve(vault, '_COM1.md'), 'utf8')).toBe('保留内容');
@@ -263,7 +266,11 @@ test('真实桌面后台重建保留快照索引并恢复搜索',async({desktopP
 
 test('真实桌面迁移校验文件并保留原目录',async({desktopPage:page,vault},testInfo)=>{
  await writeFile(resolve(vault,'迁移.md'),'迁移后的检索内容');await mkdir(resolve(vault,'attachments'));await writeFile(resolve(vault,'attachments','image.bin'),new Uint8Array([0,255,1]));await openVault(page,vault);await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 1 篇');
- const target=testInfo.outputPath('migrated-vault');page.once('dialog',dialog=>dialog.accept(target));await page.getByRole('button',{name:'迁移笔记库目录',exact:true}).click();
+ await page.getByRole('button',{name:'迁移.md',exact:true}).click();
+ const target=testInfo.outputPath('migrated-vault');await page.getByRole('button',{name:'迁移笔记库目录',exact:true}).click();
+ await page.locator('#inputDialogValue').fill('relative-path');await page.locator('#inputDialogConfirm').click();await expect(page.locator('#inputDialogError')).toContainText('绝对路径');
+ await page.locator('#inputDialogValue').fill(vault);await page.locator('#inputDialogConfirm').click();await expect(page.locator('#inputDialogError')).toContainText('E_PATH_INVALID');await expect(page.locator('#path')).toHaveText('迁移.md');
+ await submitInput(page,target);
  await expect(page.locator('#status')).toContainText('迁移完成，已切换到新目录');
  expect(await readFile(resolve(vault,'迁移.md'),'utf8')).toBe('迁移后的检索内容');expect(await readFile(resolve(target,'迁移.md'),'utf8')).toBe('迁移后的检索内容');expect(await readFile(resolve(target,'attachments','image.bin'))).toEqual(await readFile(resolve(vault,'attachments','image.bin')));
  await expect(page.locator('#vaultPath')).toHaveValue(/migrated-vault$/);await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 1 篇');

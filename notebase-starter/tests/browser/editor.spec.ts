@@ -1,3 +1,4 @@
+import { submitInput } from '../input-dialog';
 import {test,expect,type Page} from '@playwright/test';
 test('演示模式编辑 保存并重新打开',async({page})=>{
  await page.goto('/');await expect(page.locator('#mode')).toContainText('刷新即重置');
@@ -12,7 +13,7 @@ test('演示模式编辑 保存并重新打开',async({page})=>{
 test('新建同名笔记生成独立路径 刷新重置演示',async({page})=>{
  await page.goto('/');await expect(page.locator('#new')).toBeEnabled();
  await page.locator('#sidebarTools>summary').click();
- page.once('dialog',dialog=>dialog.accept('欢迎'));await page.locator('#new').click();
+ await page.locator('#new').click();await submitInput(page,'欢迎');
  await expect(page.locator('#path')).toHaveText('欢迎 (2).md');
  await page.reload();await expect(page.getByRole('button',{name:'欢迎 (2).md',exact:true})).toHaveCount(0);
 });
@@ -20,7 +21,7 @@ test('新建同名笔记生成独立路径 刷新重置演示',async({page})=>{
 test('修正系统保留名并向用户说明实际路径',async({page})=>{
  await page.goto('/');await expect(page.locator('#new')).toBeEnabled();
  await page.locator('#sidebarTools>summary').click();
- page.once('dialog',dialog=>dialog.accept('COM¹'));await page.locator('#new').click();
+ await page.locator('#new').click();await submitInput(page,'COM¹');
  await expect(page.locator('#path')).toHaveText('_COM1.md');
  await expect(page.locator('#status')).toContainText('文件名已修正或避开同名：_COM1.md');
 });

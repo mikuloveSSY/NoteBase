@@ -1,0 +1,34 @@
+
+> notebase-starter@0.7.0 test:desktop
+> playwright test --config playwright.desktop.config.ts
+
+
+Running 23 tests using 1 worker
+
+(node:37880) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  1 tests\desktop\storage.spec.ts:78:1 › 真实桌面已注册原生文件夹选择插件且具有打开权限 (2.4s)
+  ok  2 tests\desktop\storage.spec.ts:86:1 › 真实桌面搜索中文并打开命中笔记 (3.2s)
+  ok  3 tests\desktop\storage.spec.ts:96:1 › 真实桌面默认Markdown预览支持表格代码任务图片且实时更新 (2.5s)
+  ok  4 tests\desktop\storage.spec.ts:118:1 › 真实桌面列出无权限的子目录并可重新选择可读笔记库 (1.9s)
+  ok  5 tests\desktop\storage.spec.ts:145:1 › 真实桌面读取 BOM 文件 保存并重新打开 (2.4s)
+  ok  6 tests\desktop\storage.spec.ts:163:1 › 真实桌面新建保留名 自动修正且不覆盖同名文件 (2.0s)
+  ok  7 tests\desktop\storage.spec.ts:176:1 › 真实桌面非法编码与超大文件只读预览 (24.2s)
+  ok  8 tests\desktop\storage.spec.ts:194:1 › 真实桌面拒绝覆盖外部修改 (2.5s)
+  ok  9 tests\desktop\storage.spec.ts:209:1 › 真实桌面在库外构建索引 保存后自动更新并可检索 (3.6s)
+  ok 10 tests\desktop\storage.spec.ts:234:1 › 真实桌面切换库后索引状态与数据相互隔离 (4.9s)
+  ok 11 tests\desktop\storage.spec.ts:244:1 › 真实桌面外部文件变化自动进入搜索和文件列表 (4.3s)
+  ok 12 tests\desktop\storage.spec.ts:254:1 › 真实桌面后台重建保留快照索引并恢复搜索 (2.9s)
+  ok 13 tests\desktop\storage.spec.ts:267:1 › 真实桌面迁移校验文件并保留原目录 (4.1s)
+  ok 14 tests\desktop\storage.spec.ts:286:1 › 成员二真实桌面自动保存 属性与回收站恢复 (5.3s)
+  ok 15 tests\desktop\storage.spec.ts:296:1 › 成员二真实IPC持久草稿刷新恢复 双链重命名和图数据 (2.5s)
+  ok 16 tests\desktop\storage.spec.ts:307:1 › 成员二真实窗口关闭会先冲刷未保存内容 (1.7s)
+  ok 17 tests\desktop\storage.spec.ts:314:1 › 成员四自动保存后无需重开库即可检索，日志不包含笔记正文 (4.9s)
+  ok 18 tests\desktop\storage.spec.ts:323:1 › 成员四桌面设置落盘，冲突快捷键保持旧配置 (2.2s)
+  ok 19 tests\desktop\storage.spec.ts:329:1 › 成员四第二窗口读写共享库且禁止切库，两个窗口内容不互相覆盖 (2.5s)
+  ok 20 tests\desktop\storage.spec.ts:343:1 › 全员界面原位恢复不会将恢复前编辑内容再次保存回文件 (1.9s)
+  ok 21 tests\desktop\storage.spec.ts:354:1 › 成员三真实IPC导出 快照 备份校验与新位置恢复 (3.1s)
+  ok 22 tests\desktop\storage.spec.ts:366:1 › 真实exe重命名保留历史且旧路径新建不串版本 (1.8s)
+  ok 23 tests\desktop\storage.spec.ts:378:1 › 真实exe版本保留设置可关闭且保存结果不伪报快照 (1.7s)
+
+  23 passed (1.5m)

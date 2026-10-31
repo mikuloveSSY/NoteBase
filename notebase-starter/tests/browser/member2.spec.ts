@@ -1,3 +1,4 @@
+import { submitInput } from '../input-dialog';
 import { test, expect, type Page } from '@playwright/test';
 const browserErrors = new WeakMap<Page, string[]>();
 test.beforeEach(({ page }) => { const errors: string[] = []; browserErrors.set(page, errors); page.on('pageerror', error => errors.push(error.message)); });
@@ -63,14 +64,14 @@ test('周期检查clean自动重读，dirty保留本地并暂停', async ({ page
 
 test('demo支持模板、属性、rename计划取消零写、回收站和二次确认删除', async ({ page }) => {
   await page.goto('/'); await page.locator('#sidebarTools>summary').click(); await page.getByText('新建目录与模板', { exact: true }).click(); await expect(page.locator('#template')).toBeEnabled(); await page.locator('#template').selectOption('templates/每日记录.md'); await page.locator('#newDir').fill('日记');
-  page.once('dialog', d => d.accept('今日')); await page.locator('#new').click(); await expect(page.locator('#path')).toHaveText('日记/今日.md'); await expect(page.locator('.cm-content')).toContainText('# 今日');
+  await page.locator('#new').click(); await submitInput(page,'今日'); await expect(page.locator('#path')).toHaveText('日记/今日.md'); await expect(page.locator('.cm-content')).toContainText('# 今日');
   await page.locator('#propertyTitle').fill('今日总结'); await page.locator('#propertyStatus').fill('进行中'); await page.locator('#created').fill('2026-01-01T09:00:00+08:00'); await page.locator('#updated').fill('2026-01-01T11:00:00Z');
   await page.locator('#tags').fill('研究/软件, 记录'); await page.locator('#aliases').fill('今天'); await page.locator('#favorite').check(); await page.locator('#pinned').check(); await page.locator('#propertiesSave').click();
   await expect(page.locator('.cm-content')).toContainText('研究/软件'); await expect(page.locator('#favorite')).toBeChecked();
   await expect(page.locator('#title')).toHaveText('今日总结'); await expect(page.locator('.cm-content')).toContainText('status: "进行中"'); await expect(page.locator('.cm-content')).toContainText('created: "2026-01-01T09:00:00+08:00"');
   await page.locator('#created').fill(''); await page.locator('#updated').fill(''); await page.locator('#propertiesSave').click(); await expect(page.locator('.cm-content')).not.toContainText('created:'); await expect(page.locator('.cm-content')).not.toContainText('updated:');
-  page.once('dialog', d => d.accept('改名')); await page.locator('#rename').click(); await expect(page.locator('#renameDialog')).toContainText('日记/改名.md'); await page.locator('#renameCancel').click(); await expect(page.locator('#path')).toHaveText('日记/今日.md');
-  page.once('dialog', d => d.accept('改名')); await page.locator('#rename').click(); await page.locator('#renameConfirm').click(); await expect(page.locator('#path')).toHaveText('日记/改名.md');
+  await page.locator('#rename').click(); await submitInput(page,'改名'); await expect(page.locator('#renameDialog')).toContainText('日记/改名.md'); await page.locator('#renameCancel').click(); await expect(page.locator('#path')).toHaveText('日记/今日.md');
+  await page.locator('#rename').click(); await submitInput(page,'改名'); await page.locator('#renameConfirm').click(); await expect(page.locator('#path')).toHaveText('日记/改名.md');
   page.once('dialog', d => d.accept()); await page.locator('#delete').click(); await expect(page.locator('#trash')).toContainText('日记/改名.md');
   await page.getByText('回收站', { exact: true }).click(); await page.locator('#trash').getByRole('button', { name: '恢复', exact: true }).click(); await expect(page.locator('#path')).toHaveText('日记/改名.md');
   page.once('dialog', d => d.accept()); await page.locator('#delete').click(); let confirmations = 0; page.on('dialog', async d => { confirmations++; await d.accept(); });

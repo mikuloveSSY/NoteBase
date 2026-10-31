@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 test('侧栏工具默认收起，折叠保留编辑和文件列表，展开状态可恢复', async ({ page }, testInfo) => {
   await page.goto('/'); await expect(page.locator('#new')).toBeEnabled();
-  await expect(page.locator('#open')).toBeVisible(); await expect(page.locator('#notes')).toBeVisible(); await expect(page.locator('#searchQuery')).toBeHidden(); await expect(page.locator('.brand')).toBeHidden();
+  await expect(page.locator('#open')).toBeVisible(); await expect(page.locator('#notes')).toBeVisible(); await expect(page.locator('#searchQuery')).toBeHidden(); await expect(page.locator('.brand')).toBeVisible();
   await page.getByRole('button', { name: '欢迎.md', exact: true }).click();
   await page.locator('.cm-content').click(); await page.keyboard.press('Control+End'); await page.keyboard.insertText(' 折叠期间保留');
   await page.locator('#sidebarTools>summary').click(); await expect(page.locator('#new')).toBeVisible();
@@ -21,6 +21,7 @@ test('主题和编辑器偏好持久化，冲突快捷键不覆盖旧设置', as
   await page.locator('#theme').selectOption('dark'); await page.locator('#fontSize').fill('18'); await page.locator('#settingsSave').click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark'); await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark'); await page.locator('#settings').click(); await expect(page.locator('#fontSize')).toHaveValue('18');
+  await page.locator('#fontSize').fill('100'); await page.locator('#settingsSave').click(); await expect(page.locator('#fontSize-error')).toContainText('10–32'); await expect(page.locator('#fontSize')).toHaveAttribute('aria-invalid','true'); await page.locator('#fontSize').fill('18');
   await page.locator('#key-new').fill('Ctrl+S'); await page.locator('#settingsSave').click(); await expect(page.locator('#settingsError')).toContainText('E_KEYMAP_CONFLICT');
   await page.locator('#settingsClose').click(); expect(await page.evaluate(() => JSON.parse(localStorage.getItem('notebase-demo-preferences')!).keymap.new)).toBe('Ctrl+N');
 });
@@ -34,4 +35,5 @@ test('命令面板可全键盘操作，专注模式保留退出入口', async ({
   await page.goto('/'); await expect(page.locator('#new')).toBeEnabled(); await page.keyboard.press('Control+Shift+p');
   await expect(page.locator('#commandDialog')).toBeVisible(); await page.getByLabel('查找命令').fill('专注'); await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
   await expect(page.locator('html')).toHaveClass(/focus-mode/); await expect(page.locator('#focus')).toBeVisible(); await page.locator('#focus').click(); await expect(page.locator('html')).not.toHaveClass(/focus-mode/);
+  await page.locator('#commands').click(); await page.locator('#commandQuery').fill('不存在的命令输入'); await page.locator('#commandConfirm').click(); await expect(page.locator('#commandError')).toContainText('没有可执行'); await page.locator('#commandClose').click();
 });
