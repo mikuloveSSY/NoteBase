@@ -23,6 +23,7 @@ export interface RenderedNote {html:string;missingAssets:string[];warnings:Recor
 export interface ExportResult {filePath:string;missingAssets?:string[];warnings?:Record<string,unknown>[]}
 export interface VersionEntry {path:string;versionId:string;contentHash:string;createdMs:number;sizeBytes:number;description:string}
 export interface BackupResult {filePath:string;bytes:number;checksum:string;noteCount:number;attachmentCount:number}
+export interface BackupSettings {enabled:boolean;intervalHours:number;keepCount:number;dir:string;versionRetentionDays?:number}
 export interface SearchQuery {query:string;filters?:{tags?:string[];pathPrefix?:string;mtimeFromMs?:number|null;mtimeToMs?:number|null;createdFromMs?:number|null;createdToMs?:number|null;hasAttachment?:boolean|null};sort?:'relevance'|'mtime';limit?:number;cursor?:string|null}
 export interface SearchHit {path:string;title:string;snippet:string;score:number;matchedIn:string;mtimeMs:number}
 export interface SearchPage {items:SearchHit[];nextCursor:string|null;totalApprox:number;tookMs:number;degraded:boolean;degradeReason:string|null}

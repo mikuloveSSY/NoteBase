@@ -8,6 +8,8 @@ main 已汇总 **四人成果整合开发版 0.7.0**，尚非正式发布。可�
 - [主干合并记录](docs/主干合并记录-2026-11-01.md)
 - [82条需求矩阵与发布阻塞清单](docs/需求完成矩阵与发布阻塞清单.md)
 - [发布收口首轮验收](notebase-starter/docs/发布收口首轮验收.md)
+- [Windows候选版与双击启动说明](notebase-starter/docs/Windows候选版验收.md)
+- [Windows用户操作说明](notebase-starter/docs/Windows使用说明.md)
 - [四人成果整合与本轮验收](notebase-starter/docs/四人成果整合验收.md)
 - [完整整合计划](docs/四人成果完整整合计划.md)
 - [一二四整合与本轮验收](notebase-starter/docs/一二四整合验收.md)

@@ -340,6 +340,22 @@ fn verified(file_path: &Path, stage: &Path) -> Result<Manifest> {
     Ok(manifest)
 }
 pub fn restore(s: &LocalDataService, p: &Value) -> Result<Value> {
+    restore_with_move(s, p, &mut |from, to| {
+        #[cfg(windows)]
+        {
+            crate::migration::publish(from, to)
+        }
+        #[cfg(not(windows))]
+        {
+            fs::rename(from, to).map_err(AppError::io)
+        }
+    })
+}
+fn restore_with_move(
+    s: &LocalDataService,
+    p: &Value,
+    move_dir: &mut dyn FnMut(&Path, &Path) -> Result<()>,
+) -> Result<Value> {
     s.check_cancelled()?;
     let source = PathBuf::from(field(p, "filePath")?);
     if !source.is_absolute() {
@@ -395,17 +411,24 @@ pub fn restore(s: &LocalDataService, p: &Value) -> Result<Value> {
         if old.exists() {
             return Err(AppError::new("E_PATH_INVALID", "恢复保留目录已存在"));
         }
-        fs::rename(&s.files.root, &old).map_err(AppError::io)?;
-        if let Err(e) = fs::rename(stage.path(), &target) {
-            if let Err(rollback) = fs::rename(&old, &s.files.root) {
+        move_dir(&s.files.root, &old)?;
+        if let Err(mut e) = move_dir(stage.path(), &target) {
+            if let Err(rollback) = move_dir(&old, &s.files.root) {
                 let mut error = AppError::new(
                     "E_IO_PERMISSION",
-                    format!("恢复发布失败且自动回退失败：{e}; {rollback}"),
+                    format!(
+                        "恢复发布与自动回退失败；原库保存在 {}。请保留原件并重新打开该目录。{}; {}",
+                        old.display(),
+                        e.message,
+                        rollback.message
+                    ),
                 );
                 error.detail = json!({"retainedOriginalDir":old,"snapshotPath":snapshot["filePath"],"restoredTo":target});
                 return Err(error);
             }
-            return Err(AppError::io(e));
+            e.detail =
+                json!({"rolledBack":true,"snapshotPath":snapshot["filePath"],"restoredTo":target});
+            return Err(e);
         }
         // Retain the entire former directory: even files outside the backup asset scope survive.
         retained = json!(old);
@@ -413,7 +436,7 @@ pub fn restore(s: &LocalDataService, p: &Value) -> Result<Value> {
         if target.exists() {
             return Err(AppError::new("E_PATH_INVALID", "恢复目标被其他程序创建"));
         }
-        fs::rename(stage.path(), &target).map_err(AppError::io)?;
+        move_dir(stage.path(), &target)?;
     }
     Ok(
         json!({"restoredTo":target,"snapshotPath":snapshot["filePath"],"retainedOriginalDir":retained,"noteCount":manifest.note_count,"attachmentCount":manifest.attachment_count}),
@@ -421,11 +444,47 @@ pub fn restore(s: &LocalDataService, p: &Value) -> Result<Value> {
 }
 pub fn settings(s: &LocalDataService) -> Result<Value> {
     let p = s.private.join("backup-settings.json");
+    let defaults = json!({"enabled":true,"intervalHours":24,"keepCount":30,"dir":s.backups,"versionRetentionDays":30});
     if !p.exists() {
-        return Ok(json!({"enabled":true,"intervalHours":24,"keepCount":30,"dir":s.backups}));
+        return Ok(defaults);
     }
-    serde_json::from_slice(&files::read_limit(&p, 65536)?)
-        .map_err(|_| AppError::new("E_FORMAT_UNSUPPORTED", "备份配置损坏"))
+    let mut stored: Value = serde_json::from_slice(&files::read_limit(&p, 65536)?)
+        .map_err(|_| AppError::new("E_FORMAT_UNSUPPORTED", "备份配置损坏，原件已保留"))?;
+    if !stored.is_object() {
+        return Err(AppError::new(
+            "E_FORMAT_UNSUPPORTED",
+            "备份配置必须为对象，原件已保留",
+        ));
+    }
+    for (key, default) in defaults.as_object().unwrap() {
+        if let Some(value) = stored.get(key) {
+            validate_setting(s, key, value).map_err(|_| {
+                AppError::new(
+                    "E_FORMAT_UNSUPPORTED",
+                    format!("备份配置字段{key}无效，原件已保留"),
+                )
+            })?;
+        } else {
+            stored[key] = default.clone();
+        }
+    }
+    Ok(stored)
+}
+fn validate_setting(s: &LocalDataService, key: &str, v: &Value) -> Result<()> {
+    match key {
+        "enabled" if v.is_boolean() => {}
+        "intervalHours" if v.as_u64().is_some_and(|n| (1..=8760).contains(&n)) => {}
+        "keepCount" if v.as_u64().is_some_and(|n| (1..=365).contains(&n)) => {}
+        "versionRetentionDays" if v.as_u64().is_some_and(|n| n <= 36500) => {}
+        "dir" => {
+            s.files.external(
+                v.as_str()
+                    .ok_or_else(|| AppError::new("E_PATH_INVALID", "备份目录必须为字符串"))?,
+            )?;
+        }
+        _ => return Err(AppError::new("E_PATH_INVALID", "无效备份或版本保留设置")),
+    }
+    Ok(())
 }
 pub fn configure(s: &LocalDataService, p: &Value) -> Result<Value> {
     let mut config = settings(s)?;
@@ -433,18 +492,7 @@ pub fn configure(s: &LocalDataService, p: &Value) -> Result<Value> {
         .as_object()
         .ok_or_else(|| AppError::new("E_PATH_INVALID", "backup 设置必须为对象"))?;
     for (key, v) in o {
-        match key.as_str() {
-            "enabled" if v.is_boolean() => {}
-            "intervalHours" if v.as_u64().is_some_and(|h| (1..=8760).contains(&h)) => {}
-            "keepCount" if v.as_u64().is_some_and(|n| (1..=365).contains(&n)) => {}
-            "dir" => {
-                s.files
-                    .external(v.as_str().ok_or_else(|| {
-                        AppError::new("E_PATH_INVALID", "备份目录必须为字符串")
-                    })?)?;
-            }
-            _ => return Err(AppError::new("E_PATH_INVALID", "无效备份设置")),
-        }
+        validate_setting(s, key, v)?;
         config[key] = v.clone();
     }
     files::atomic(
@@ -524,4 +572,71 @@ pub fn due(s: &LocalDataService, now: u64) -> Result<bool> {
     };
     Ok(c["enabled"] == true
         && now.saturating_sub(last) >= c["intervalHours"].as_u64().unwrap_or(24) * 3600000)
+}
+
+#[cfg(test)]
+mod restore_faults {
+    use super::*;
+    fn exercise(rollback_fails: bool) {
+        let root = tempfile::tempdir().unwrap();
+        let vault = root.path().join("vault");
+        fs::create_dir(&vault).unwrap();
+        fs::write(vault.join("A.md"), b"archive").unwrap();
+        let s = LocalDataService::open(vault.to_str().unwrap(), &root.path().join("data"), "fault")
+            .unwrap();
+        let archive = create(&s, &json!({})).unwrap();
+        fs::write(vault.join("A.md"), b"current original").unwrap();
+        let mut calls = 0;
+        let mut retained = None;
+        let error = restore_with_move(
+            &s,
+            &json!({"filePath":archive["filePath"],"mode":"original"}),
+            &mut |from, to| {
+                calls += 1;
+                if calls == 2 {
+                    return Err(AppError::new("E_IO_LOCKED", "injected publication failure"));
+                }
+                if calls == 3 && rollback_fails {
+                    return Err(AppError::new("E_IO_LOCKED", "injected rollback failure"));
+                }
+                if calls == 1 {
+                    retained = Some(to.to_path_buf());
+                }
+                fs::rename(from, to).map_err(AppError::io)
+            },
+        )
+        .unwrap_err();
+        assert_eq!(calls, 3);
+        if rollback_fails {
+            let original = retained.unwrap();
+            assert_eq!(
+                fs::read(original.join("A.md")).unwrap(),
+                b"current original"
+            );
+            assert_eq!(error.detail["retainedOriginalDir"], json!(original));
+            assert!(Path::new(error.detail["snapshotPath"].as_str().unwrap()).exists());
+            assert!(!vault.exists());
+        } else {
+            assert_eq!(error.code, "E_IO_LOCKED");
+            assert_eq!(error.detail["rolledBack"], true);
+            assert_eq!(fs::read(vault.join("A.md")).unwrap(), b"current original");
+        }
+        let mut zip =
+            ZipArchive::new(fs::File::open(archive["filePath"].as_str().unwrap()).unwrap())
+                .unwrap();
+        let mut body = String::new();
+        zip.by_name("notes/A.md")
+            .unwrap()
+            .read_to_string(&mut body)
+            .unwrap();
+        assert_eq!(body, "archive");
+    }
+    #[test]
+    fn publication_failure_restores_original_directory() {
+        exercise(false);
+    }
+    #[test]
+    fn rollback_failure_retains_original_and_reports_recovery_paths() {
+        exercise(true);
+    }
 }

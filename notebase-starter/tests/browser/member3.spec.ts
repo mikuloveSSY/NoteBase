@@ -7,7 +7,7 @@ async function dataBridge(page:Page){
  export async function call(command,p={}){window.__dataCalls.push({command,p});
  if(command==='settings_get')return {values:{vaultPath:'/fixture/vault'}};
  if(command==='vault_open')return {vaultId:'fixture',noteCount:1};if(command==='vault_info')return {vaultPath:'/fixture/vault'};
- if(command==='note_list')return {items:p.scope==='versions'?[{path:'A.md',versionId:'old',createdMs:1,description:'历史节点',sizeBytes:8}]:p.scope?[]:[{path:'A.md',title:'A',mtimeMs:1,hasAttachment:false}]};
+ if(command==='note_list')return {items:p.scope==='versions'?(window.__versionDays===0?[]:[{path:'A.md',versionId:'old',createdMs:1,description:'历史节点',sizeBytes:8}]):p.scope?[]:[{path:'A.md',title:'A',mtimeMs:1,hasAttachment:false}]};
  if(command==='note_read')return p.versionId?{body:'# 历史内容'}:content();
  if(command==='note_save'){if(p.action==='draft')return {};body=p.body;hash='saved';return {path:'A.md',contentHash:hash,mtimeMs:1,bytesWritten:body.length,snapshotCreated:true,indexQueued:true,warnings:[]};}
  if(command==='note_restore'){body='# 历史内容';hash='old';return {path:'A.md',contentHash:hash,mtimeMs:1,warnings:[]};}
@@ -15,9 +15,9 @@ async function dataBridge(page:Page){
  if(command==='link_backlinks'||command==='link_mentions')return {items:[]};
  if(command==='export_note'){if(p.preview){if(window.__previewDelay)await new Promise(r=>window.__releasePreview=r);return {html:'<!doctype html><h1>'+p.body.replaceAll('<','&lt;')+'</h1>',missingAssets:[],warnings:[]};}return {filePath:p.targetPath,missingAssets:['missing.png'],warnings:[{kind:'unresolved_link',target:'Missing'}]};}
  if(command==='backup_create')return {filePath:'/fixture/backup.zip',bytes:100,checksum:'fixture'};
- if(command==='backup_restore')return p.verifyOnly?{verified:true,noteCount:1}:{restoredTo:p.targetPath,snapshotPath:'/fixture/before.zip'};
+ if(command==='backup_restore'){if(window.__restoreFailure&&!p.verifyOnly)throw {code:'E_IO_PERMISSION',message:'恢复发布失败',detail:{retainedOriginalDir:'/fixture/retained-vault',snapshotPath:'/fixture/before.zip'}};return p.verifyOnly?{verified:true,noteCount:1}:{restoredTo:p.targetPath,snapshotPath:'/fixture/before.zip'};}
  if(command==='sync_configure')return {ok:true};if(command==='sync_now')return {completed:true,conflicts:['A.md']};if(command==='sync_status')return {state:'conflict',conflicts:['A.md']};
- if(command==='settings_set')return {ok:true};throw new Error('unsupported '+command);}` }));
+ if(command==='settings_set'){if(p.values.backup)window.__versionDays=p.values.backup.versionRetentionDays;return {ok:true};}throw new Error('unsupported '+command);}` }));
  await page.goto('/');await page.locator('#open').click();await page.getByRole('button',{name:'A.md',exact:true}).click();
 }
 test('隔离的预览消费当前未保存文本',async({page})=>{await dataBridge(page);await page.locator('#previewToggle').click();await expect(page.frameLocator('#markdownPreview').locator('h1')).toContainText('当前内容');await expect(page.locator('#markdownPreview')).toHaveAttribute('sandbox','');const editor=page.locator('.cm-content');await editor.click();await page.keyboard.press('Control+End');await page.keyboard.type(' unsaved');await expect(page.frameLocator('#markdownPreview').locator('h1')).toContainText('unsaved');});
@@ -27,6 +27,19 @@ test('整库备份和仅校验均有可见结果',async({page})=>{await dataBrid
 test('同步配置清空密码 并展示冲突路径',async({page})=>{await dataBridge(page);await page.getByText('WebDAV 同步',{exact:true}).click();await page.locator('#syncEndpoint').fill('https://dav.example.invalid/notes/');await page.locator('#syncUser').fill('fixture');await page.locator('#syncPassword').fill('fixture-only');await page.locator('#syncConfigure').click();await expect(page.locator('#syncPassword')).toHaveValue('');await page.locator('#syncRun').click();await expect(page.locator('#syncResult')).toContainText('冲突已保留双份');});
 
 test('PDF 导出可选择并提示浏览器要求',async({page})=>{await dataBridge(page);await expect(page.locator('#exportFormat option[value="pdf"]')).toHaveJSProperty('disabled',false);});
+
+test('版本保留可关闭并通过既有设置命令保存',async({page})=>{
+ await dataBridge(page);await page.locator('#versionRetentionDays').fill('0');await page.locator('#backupSettings').click();
+ await expect(page.locator('#backupResult')).toContainText('版本历史已关闭');
+ await expect(page.locator('#versions')).toContainText('暂无版本');
+ const calls=await page.evaluate(()=>(window as any).__dataCalls);expect(calls.findLast((c:any)=>c.command==='settings_set').p.values.backup.versionRetentionDays).toBe(0);
+});
+
+test('恢复回退失败时显示原库保留路径与快照路径',async({page})=>{
+ await dataBridge(page);await page.evaluate(()=>{(window as any).__restoreFailure=true;});
+ await page.locator('#restoreMode').selectOption('original');await page.locator('#restoreFile').fill('/fixture/backup.zip');page.once('dialog',d=>d.accept());await page.locator('#restoreRun').click();
+ await expect(page.locator('#backupResult')).toContainText('/fixture/retained-vault');await expect(page.locator('#backupResult')).toContainText('/fixture/before.zip');
+});
 
 test('迟到预览不会覆盖较新的编辑文本',async({page})=>{
  await dataBridge(page);await page.locator('#previewToggle').click();await expect(page.frameLocator('#markdownPreview').locator('h1')).toContainText('当前内容');

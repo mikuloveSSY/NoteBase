@@ -74,6 +74,13 @@ impl App {
             return Err(self.busy_error());
         }
         let vault = self.notes()?.store.vault_path();
+        if matches!(
+            command,
+            "sync_now" | "background_sync" | "maintenance" | "backup_create"
+        ) || (command == "backup_restore" && payload["verifyOnly"] != true)
+        {
+            self.notes()?.ensure_history_ready(None)?;
+        }
         let id = content_hash(vault.as_bytes())[7..23].to_owned();
         let exclusive = !(command == "export_note"
             && payload["preview"] == true
