@@ -1,0 +1,37 @@
+{
+  "architecture": "windows-x64",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+  "zip": {
+    "path": "D:/NoteBase/delivery/NoteBase-0.7.0-8584ed2b-windows-x64.zip",
+    "bytes": 7449224,
+    "sha256": "6ce87ec0c8a78fb6da135fc89d85e8cf9955e8265ee0d87aaebc64b0404befb9"
+  },
+  "implementationCommit": "3d4f6c50e07a19701d1babadde0f0303f4faf340",
+  "validation": {
+    "unit": 22,
+    "independentWebdav": 1,
+    "packagedDesktopRepeated": 20,
+    "core": 201,
+    "browser": 24,
+    "totalUnique": 268,
+    "desktop": 20
+  },
+  "installer": {
+    "path": "D:/NoteBase/delivery/NoteBase-0.7.0-8584ed2b-windows-x64-setup.exe",
+    "bytes": 5297510,
+    "sha256": "29424976fa6342076f23fdc3246c8df270dd3ace89bec2c1662af13a3ade57c6"
+  },
+  "os": "Microsoft Windows 10.0.26200",
+  "notes": "Packaged exe launched from its own directory; installer generated, clean-machine install/upgrade/uninstall not run.",
+  "softwareVersion": "0.7.0 development-candidate",
+  "exe": {
+    "path": "D:/NoteBase/delivery/NoteBase-0.7.0-8584ed2b-windows-x64/NoteBase.exe",
+    "subsystem": "Windows GUI",
+    "bytes": 19586560,
+    "sha256": "3ce0701235262dab1744543fc8da13eb922839af4b875f44a3d7d5bda95802fe"
+  },
+  "node": "v24.16.0",
+  "baseCommit": "98150f32d54186053d07a7e7bc9f6c0628cd4d9e",
+  "sourceRevision": "8584ed2bb9f42c99b53132a4d14b6e08fe7efb7f",
+  "date": "2026-11-01T04:17:25.7437008+08:00"
+}
