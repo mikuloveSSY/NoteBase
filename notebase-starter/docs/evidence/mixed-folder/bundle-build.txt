@@ -1,0 +1,10 @@
+
+> notebase-starter@0.7.0 tauri
+> tauri bundle --bundles nsis --ci --no-binary-patching
+
+        Warn Skipping binary patching for D:\NoteBase\repository\notebase-starter\src-tauri\target\release\notebase.exe due to --no-binary-patching flag.
+        Info Target: x64
+     Running makensis to produce D:\NoteBase\repository\notebase-starter\src-tauri\target\release\bundle\nsis\NoteBase_0.7.0_x64-setup.exe
+    Finished 1 bundle at:
+        D:\NoteBase\repository\notebase-starter\src-tauri\target\release\bundle\nsis\NoteBase_0.7.0_x64-setup.exe (5.15 MiB)
+

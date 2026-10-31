@@ -1,0 +1,21 @@
+
+7-Zip 24.09 (x64) : Copyright (c) 1999-2024 Igor Pavlov : 2024-11-29
+
+Scanning the drive for archives:
+1 file, 5401070 bytes (5275 KiB)
+
+Extracting archive: D:\NoteBase\repository\notebase-starter\src-tauri\target\release\bundle\nsis\NoteBase_0.7.0_x64-setup.exe
+--
+Path = D:\NoteBase\repository\notebase-starter\src-tauri\target\release\bundle\nsis\NoteBase_0.7.0_x64-setup.exe
+Type = Nsis
+Physical Size = 5401070
+Method = LZMA:23
+Solid = +
+Headers Size = 77494
+Embedded Stub Size = 54272
+SubType = NSIS-3 Unicode BadCmd=13
+
+Everything is Ok
+
+Size:       20178432
+Compressed: 5401070

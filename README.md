@@ -12,6 +12,7 @@ main 已汇总 **四人成果整合开发版 0.7.0**，尚非正式发布。可�
 - [发布收口首轮验收](notebase-starter/docs/发布收口首轮验收.md)
 - [Windows候选版与双击启动说明](notebase-starter/docs/Windows候选版验收.md)
 - [最新版Windows安装包与旧包清理记录](notebase-starter/docs/最新版安装包与清理记录.md)
+- [混合文件夹卡顿修复与当前交付验收](notebase-starter/docs/混合文件夹卡顿修复验收.md)
 - [Windows用户操作说明](notebase-starter/docs/Windows使用说明.md)
 - [原生文件夹选择入口与新交付](notebase-starter/docs/文件夹选择更新验收.md)
 - [Markdown实时预览与三种视图](notebase-starter/docs/Markdown预览更新验收.md)

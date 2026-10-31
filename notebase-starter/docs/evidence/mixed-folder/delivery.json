@@ -1,0 +1,16 @@
+{
+  "packagedDesktopRepeatedTests": 2,
+  "exeSha256": "aa456b93441885b5071c0462a723e530f286cba6ce07a432b4f13f985e88cbd6",
+  "zipSha256": "b0053cfd02bc25dfe3adda0240cdbab4f50fa1fd57722801041b163ba1eab8df",
+  "zipPayloadSha256": "aa456b93441885b5071c0462a723e530f286cba6ce07a432b4f13f985e88cbd6",
+  "zip": "D:/NoteBase/delivery/NoteBase-0.7.0-b33b9368-windows-x64.zip",
+  "structureCheck": "7-Zip t exit 0; subtype reports BadCmd=13, payload extracted and hashed",
+  "executable": "D:/NoteBase/delivery/NoteBase-0.7.0-b33b9368-windows-x64/NoteBase.exe",
+  "workingTreeDirty": false,
+  "sourceRevision": "b33b93681d6927539157e9765f2d7eabe5fac47b",
+  "installerSha256": "1a9342b819250a207bb84c602db404126c09a415571bd8a20c6ef54551ae0927",
+  "installerBytes": 5401070,
+  "installerPayloadSha256": "aa456b93441885b5071c0462a723e530f286cba6ce07a432b4f13f985e88cbd6",
+  "cleanMachineInstallTested": false,
+  "installer": "D:/NoteBase/delivery/NoteBase-0.7.0-b33b9368-windows-x64-setup.exe"
+}
