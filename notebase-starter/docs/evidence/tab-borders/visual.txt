@@ -1,0 +1,1 @@
+Captured light/dark tabs with one inactive and one selected file.

@@ -10,6 +10,7 @@ button:hover { background:var(--selection); }
 .notice,.search-degraded { background:var(--notice); color:var(--notice-text); }
 .error,#settingsError,#indexWarning { color:var(--error); }
 .note.selected,.tab.selected { background:var(--selection); color:var(--text); }
+.tab { border:1px solid var(--muted); border-bottom-width:2px; border-radius:6px 6px 0 0; }
 .tab.selected { border-color:var(--accent); }
 .cm-gutters { background:var(--sidebar)!important; color:var(--muted)!important; }
 .cm-activeLine,.cm-activeLineGutter { background:var(--selection)!important; }

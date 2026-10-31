@@ -1,0 +1,16 @@
+
+> notebase-starter@0.7.0 test:e2e
+> playwright test tests/browser/member4.spec.ts
+
+[WebServer] (node:40956) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 3 tests using 1 worker
+
+(node:37724) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 1 tests\browser\member4.spec.ts:2:1 › 主题和编辑器偏好持久化，冲突快捷键不覆盖旧设置 (1.0s)
+  ok 2 tests\browser\member4.spec.ts:10:1 › 恢复标签页和当前笔记，缓存中不存正文 (850ms)
+  ok 3 tests\browser\member4.spec.ts:16:1 › 命令面板可全键盘操作，专注模式保留退出入口 (648ms)
+
+  3 passed (5.3s)
