@@ -5,6 +5,7 @@ use super::{
     IndexStore, BATCH_SIZE,
 };
 use crate::domain::{AppError, NoteStore, RelPath, Result};
+use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeSet,
     sync::atomic::{AtomicBool, Ordering},
@@ -46,12 +47,24 @@ pub fn apply(
             return Err(AppError::new("E_CANCELLED", "增量索引已取消"));
         }
         let path = RelPath::new(&name)?;
-        let result = store
-            .read(&path)
-            .map_err(AppError::from)
-            .and_then(|note| extract(path.clone(), note));
+        let result = store.read(&path).map_err(AppError::from).and_then(|note| {
+            let unchanged = !note.truncated
+                && fingerprints.get(&name).is_some_and(|(hash, mtime, size)| {
+                    *mtime == note.mtime_ms
+                        && *size == note.size_bytes
+                        && *hash == format!("{:x}", Sha256::digest(&note.raw))
+                });
+            if unchanged {
+                Ok(None)
+            } else {
+                extract(path.clone(), note).map(Some)
+            }
+        });
         match result {
-            Ok(record) => {
+            Ok(None) => {
+                invalid.remove(&name);
+            }
+            Ok(Some(record)) => {
                 invalid.remove(&name);
                 let old = fingerprints.get(&name);
                 if old.is_none_or(|(hash, mtime, size)| {
@@ -116,4 +129,68 @@ fn flush(
         removes.clear();
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::infra::FsStore;
+    use std::fs;
+    #[test]
+    fn reconcile_preserves_unchanged_records_but_checks_hash_when_stat_is_equal() {
+        let temp = tempfile::tempdir().unwrap();
+        let vault = temp.path().join("vault");
+        fs::create_dir(&vault).unwrap();
+        let file = vault.join("a.md");
+        fs::write(&file, "---\ntitle: 标题甲\n---\n正文甲").unwrap();
+        let modified = fs::metadata(&file).unwrap().modified().unwrap();
+        let store = FsStore::open(vault.to_str().unwrap()).unwrap();
+        let index =
+            SqliteIndexStore::open(&temp.path().join("index.db"), "0123456789abcdef").unwrap();
+        index.begin_build().unwrap();
+        let mut invalid = BTreeSet::new();
+        let full = || Work {
+            paths: Default::default(),
+            reconcile: true,
+            warning: None,
+        };
+        let cancel = AtomicBool::new(false);
+        assert_eq!(
+            apply(&index, &store, full(), &mut invalid, &cancel)
+                .unwrap()
+                .len(),
+            1
+        );
+        let path = RelPath::new("a.md").unwrap();
+        let before = index.get(&path).unwrap().unwrap();
+        assert!(apply(&index, &store, full(), &mut invalid, &cancel)
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            index.get(&path).unwrap().unwrap().content_hash,
+            before.content_hash
+        );
+        fs::write(&file, "---\ntitle: 标题乙\n---\n正文乙").unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&file)
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(modified))
+            .unwrap();
+        let stat = store.stat(&path).unwrap();
+        assert_eq!(
+            (stat.mtime_ms, stat.size_bytes),
+            (before.mtime_ms, before.size_bytes)
+        );
+        assert_eq!(
+            apply(&index, &store, full(), &mut invalid, &cancel)
+                .unwrap()
+                .len(),
+            1
+        );
+        let after = index.get(&path).unwrap().unwrap();
+        assert_ne!(after.content_hash, before.content_hash);
+        assert_eq!(after.title, "标题乙");
+        assert!(after.body.contains("正文乙"));
+    }
 }

@@ -1,0 +1,21 @@
+{
+  "date": "2026-10-31",
+  "timezone": "Asia/Shanghai",
+  "os": "Microsoft Windows NT 10.0.26200.0",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+  "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)",
+  "node": "v24.16.0",
+  "npm": "11.16.0",
+  "sources": {
+    "member1": "9c1b90418a35bb6f38f1427bf962d6878ed6de5c",
+    "main": "4fb98597587fd5e32a26f79d5e2627295d634ef0",
+    "member4": "4c3ae68cab3801c399b93a818927efe00a0b96c8"
+  },
+  "software": "0.7.0",
+  "corePassed": 143,
+  "unitPassed": 21,
+  "browserPassed": 15,
+  "desktopPassed": 16,
+  "finalScalePerformance": "not run",
+  "installer": "not run"
+}

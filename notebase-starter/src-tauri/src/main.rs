@@ -19,7 +19,24 @@ async fn dispatch(expected: &str, request: Request, app: Shared) -> Response {
         };
     }
     let id = request.id.clone();
-    match tauri::async_runtime::spawn_blocking(move || match app.app.lock() {
+    match tauri::async_runtime::spawn_blocking(move || {
+        if request.command == "search" {
+            let session = match app.app.lock() {
+                Ok(core) => core.search_session(),
+                Err(_) => Err(notebase_core::domain::AppError::new("E_INTERNAL", "应用状态锁异常")),
+            };
+            // The Arc remains valid outside the application lock; switching cancels it.
+            let result = session.and_then(|session| session.search(&request.payload));
+            let code = result.as_ref().err().map(|error| error.code.as_str());
+            if let Err(error) = app.logger.record("app-shell", "search", code) {
+                let _ = app.handle.emit("notebase:error_raised",serde_json::json!({"code":error.code,"message":"本地诊断日志写入失败；笔记操作结果不受影响"}));
+            }
+            return match result {
+                Ok(data) => Response::Ok { id: request.id, ok: true, data },
+                Err(error) => Response::Err { id: request.id, ok: false, error },
+            };
+        }
+        match app.app.lock() {
         Ok(mut core) => {
             let failure = |code: &str, message: &str| Response::Err { id: request.id.clone(), ok: false, error: notebase_core::domain::AppError::new(code, message) };
             if app.handle.webview_windows().len()>1 && (request.command=="vault_open" || (request.command=="settings_set" && request.payload["values"].get("vaultPath").is_some())) {
@@ -50,7 +67,7 @@ async fn dispatch(expected: &str, request: Request, app: Shared) -> Response {
             ok: false,
             error: notebase_core::domain::AppError::new("E_INTERNAL", "应用状态锁异常"),
         },
-    })
+    }})
     .await
     {
         Ok(response) => response,

@@ -342,11 +342,12 @@ dependencies = [
 
 [[package]]
 name = "notebase-core"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "chrono",
  "comrak",
  "fs2",
+ "memchr",
  "notify",
  "rusqlite",
  "serde",

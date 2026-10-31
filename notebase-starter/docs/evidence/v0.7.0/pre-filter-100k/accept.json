@@ -1,0 +1,9 @@
+{
+  "corpusBytes": 492538400,
+  "dataBytesAfterClose": 1486151680,
+  "firstReadyMs": 32550,
+  "indexBytesLive": 1488216064,
+  "notes": 100000,
+  "openedExistingIndex": true,
+  "startupSettledMs": 590614
+}

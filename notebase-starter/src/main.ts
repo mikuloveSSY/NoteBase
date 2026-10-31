@@ -440,7 +440,7 @@ async function pollIndex() {
   if (opened && !switching) {
     try {
       const value = await vaultCall<IndexStatus>('index_status', {}), labels = { ready: '索引已就绪', rebuilding: '正在构建索引', offline: '索引需刷新或存在不可索引文件', unavailable: '索引不可用' };
-      if (generation === vaultGeneration) $('indexStatus').textContent = labels[value.state] + ' · ' + value.noteCount + ' 篇' + (value.progress ? ' · ' + value.progress.done + '/' + value.progress.total : '');
+      if (generation === vaultGeneration) $('indexStatus').textContent = labels[value.state] + ' · ' + value.noteCount + ' 篇' + (value.noteCount >= 100000 ? ' · 大库模式：短词检索可能需要更长时间' : '') + (value.progress ? ' · ' + value.progress.done + '/' + value.progress.total : '');
     } catch (error) { if (generation === vaultGeneration && error !== staleVault) $('indexStatus').textContent = '索引不可用：' + message(error); }
     if (generation === vaultGeneration && externalTreeDirty && !busy) {
       externalTreeDirty = false;

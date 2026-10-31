@@ -232,6 +232,8 @@ impl NoteService {
         if seq(p) > 0 {
             self.saved_seq.insert(id.clone(), seq(p));
         }
+        // Member three must confirm a persisted snapshot separately from this write.
+        // Until that service is wired, snapshotCreated remains false in the shared DTO.
         let mut warnings = vec!["版本快照尚未接入".to_owned()];
         let draft_key = key(&id);
         match self.state.read("drafts", &draft_key) {

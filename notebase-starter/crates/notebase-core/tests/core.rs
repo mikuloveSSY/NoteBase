@@ -139,10 +139,17 @@ fn yaml_parses_without_removing_original() {
 #[test]
 fn unimplemented_does_not_report_success() {
     let (_, mut app) = setup();
-    for c in ["backup_create", "sync_now"] {
+    for c in [
+        "export_note",
+        "backup_create",
+        "backup_restore",
+        "sync_configure",
+        "sync_now",
+        "sync_status",
+    ] {
         let r = call(&mut app, c, json!({}));
-        assert_eq!(r["ok"], false);
-        assert_eq!(r["error"]["code"], "E_INTERNAL");
+        assert_eq!(r["ok"], false, "{c}: {r}");
+        assert_eq!(r["error"]["code"], "E_INTERNAL", "{c}: {r}");
     }
 }
 #[test]

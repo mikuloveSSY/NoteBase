@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 
 type StoreFactory = Box<dyn Fn(&str) -> Result<Box<dyn NoteStore>> + Send + Sync>;
-pub type IndexFactory = Box<dyn Fn(&str, &str) -> Box<dyn IndexSession> + Send + Sync>;
+pub type IndexFactory = Box<dyn Fn(&str, &str) -> Arc<dyn IndexSession> + Send + Sync>;
 pub type SupportFactory =
     Box<dyn Fn(&str, &str) -> Result<(Box<dyn NoteFiles>, Box<dyn NoteStateStore>)> + Send + Sync>;
 pub type NoteEvents = Arc<dyn Fn(&str, Value) + Send + Sync>;
@@ -16,7 +16,7 @@ pub struct App {
     notes: Option<NoteService>,
     factory: StoreFactory,
     index_factory: Option<IndexFactory>,
-    index: Option<Box<dyn IndexSession>>,
+    index: Option<Arc<dyn IndexSession>>,
     support: Option<SupportFactory>,
     events: Option<NoteEvents>,
     location: Option<Box<dyn VaultLocation>>,
@@ -54,6 +54,16 @@ impl App {
     pub fn with_events(mut self, events: NoteEvents) -> Self {
         self.events = Some(events);
         self
+    }
+    pub fn search_session(&self) -> Result<Arc<dyn IndexSession>> {
+        self.index
+            .clone()
+            .ok_or_else(|| crate::index::unavailable("未配置索引"))
+    }
+    fn cancel_index(&mut self) {
+        if let Some(old) = self.index.take() {
+            old.cancel();
+        }
     }
     pub fn dispatch(&mut self, mut r: Request) -> Response {
         if r.payload.is_object() && r.command == "note_save" && r.payload.get("clientSeq").is_none()
@@ -156,7 +166,7 @@ impl App {
         notes.list(&json!({"scope":"drafts"}))?;
         notes.list(&json!({"scope":"renames"}))?;
         location.save_path(&copied)?;
-        self.index = None;
+        self.cancel_index();
         self.index = self
             .index_factory
             .as_ref()
@@ -194,7 +204,7 @@ impl App {
                 // Reopening a shared vault must retain every client's save baseline.
                 if same {
                     if !self.index.as_ref().is_some_and(|index| index.refresh()) {
-                        self.index = None;
+                        self.cancel_index();
                         self.index = self
                             .index_factory
                             .as_ref()
@@ -208,7 +218,7 @@ impl App {
                     .as_ref()
                     .is_some_and(|index| same && index.refresh());
                 if !reused {
-                    self.index = None;
+                    self.cancel_index();
                     self.index = self
                         .index_factory
                         .as_ref()
@@ -323,5 +333,11 @@ impl App {
             .as_ref()
             .map(|index| index.status())
             .unwrap_or_default()
+    }
+}
+
+impl Drop for App {
+    fn drop(&mut self) {
+        self.cancel_index();
     }
 }

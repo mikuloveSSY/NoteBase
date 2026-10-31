@@ -26,7 +26,7 @@ fn preferences_preserve_vault_and_other_members_keys_and_reject_conflicts_atomic
     let path = dir.path().join("settings.json");
     fs::write(
         &path,
-        r#"{"vaultPath":"D:/notes","sync":{"enabled":false}}"#,
+        r#"{"vaultPath":"D:/notes","sync":{"enabled":false},"backup":{"customRetention":17}}"#,
     )
     .unwrap();
     let store = FileSettings(path.clone());
@@ -35,6 +35,7 @@ fn preferences_preserve_vault_and_other_members_keys_and_reject_conflicts_atomic
         .unwrap();
     let before = fs::read(&path).unwrap();
     assert_eq!(store.read().unwrap()["sync"]["enabled"], false);
+    assert_eq!(store.read().unwrap()["backup"]["customRetention"], 17);
     assert_eq!(store.read().unwrap()["vaultPath"], "D:/notes");
     assert_eq!(
         store

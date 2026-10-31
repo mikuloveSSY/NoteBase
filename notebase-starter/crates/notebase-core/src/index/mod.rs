@@ -80,7 +80,8 @@ pub trait IndexStore {
 }
 
 // 应用层仅依赖会话端口；后台任务不借用 App 的全局锁。
-pub trait IndexSession: Send {
+pub trait IndexSession: Send + Sync {
+    fn cancel(&self);
     fn rebuild(&self) -> Result<String>;
     fn enqueue(&self, path: &RelPath) -> bool;
     fn search(&self, query: &serde_json::Value) -> Result<serde_json::Value>;

@@ -1,0 +1,30 @@
+
+> notebase-starter@0.7.0 test:e2e
+> playwright test --workers=1
+
+[WebServer] (node:38044) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 15 tests using 1 worker
+
+(node:17896) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:17896) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 1 tests\browser\editor.spec.ts:2:1 › 演示模式编辑 保存并重新打开 (899ms)
+  ok 2 tests\browser\editor.spec.ts:12:1 › 新建同名笔记生成独立路径 刷新重置演示 (578ms)
+  ok 3 tests\browser\editor.spec.ts:19:1 › 修正系统保留名并向用户说明实际路径 (453ms)
+  ok 4 tests\browser\editor.spec.ts:47:1 › 非法编码只读预览 禁止编辑和快捷键保存 (487ms)
+  ok 5 tests\browser\editor.spec.ts:58:1 › 超大文件显示预览截断说明 (468ms)
+  ok 6 tests\browser\editor.spec.ts:66:1 › 可以加载第501篇笔记并保持列表选择 (500ms)
+  ok 7 tests\browser\member2.spec.ts:24:1 › 异步保存不冻结输入，旧回包不会把后续输入标为已保存 (476ms)
+  ok 8 tests\browser\member2.spec.ts:35:1 › 冲突提供三个显式选择，关闭弹窗后仍暂停且保留本地输入 (582ms)
+  ok 9 tests\browser\member2.spec.ts:47:1 › 切换轻量标签前flush，并从启动恢复列表显式恢复草稿 (436ms)
+  ok 10 tests\browser\member2.spec.ts:55:1 › 周期检查clean自动重读，dirty保留本地并暂停 (587ms)
+  ok 11 tests\browser\member2.spec.ts:64:1 › demo支持模板、属性、rename计划取消零写、回收站和二次确认删除 (824ms)
+  ok 12 tests\browser\member2.spec.ts:80:1 › 粘贴与拖放File插入光标并自动保存，链接面板与SVG图可导航缩放 (607ms)
+  ok 13 tests\browser\member4.spec.ts:2:1 › 主题和编辑器偏好持久化，冲突快捷键不覆盖旧设置 (488ms)
+  ok 14 tests\browser\member4.spec.ts:10:1 › 恢复标签页和当前笔记，缓存中不存正文 (435ms)
+  ok 15 tests\browser\member4.spec.ts:16:1 › 命令面板可全键盘操作，专注模式保留退出入口 (329ms)
+
+  15 passed (10.7s)
