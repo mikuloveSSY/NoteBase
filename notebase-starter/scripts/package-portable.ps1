@@ -1,3 +1,4 @@
+#Requires -Version 7.0
 param([string]$OutputDirectory = (Join-Path $PSScriptRoot '../dist-delivery'))
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -5,7 +6,7 @@ $binary = Join-Path $projectRoot 'src-tauri/target/release/notebase.exe'
 if (!(Test-Path -LiteralPath $binary -PathType Leaf)) { throw '先执行 npm run desktop:build -- --no-bundle' }
 $package = Get-Content (Join-Path $projectRoot 'package.json') -Raw | ConvertFrom-Json
 $tauri = Get-Content (Join-Path $projectRoot 'src-tauri/tauri.conf.json') -Raw | ConvertFrom-Json
-$lock = Get-Content (Join-Path $projectRoot 'package-lock.json') -Raw | ConvertFrom-Json
+$lock = Get-Content (Join-Path $projectRoot 'package-lock.json') -Raw | ConvertFrom-Json -AsHashtable
 if ($package.version -ne $tauri.version -or $package.version -ne $lock.version) { throw 'package、lock、Tauri版本不一致' }
 foreach ($manifest in @('src-tauri/Cargo.toml', 'crates/notebase-core/Cargo.toml')) {
     $source = Get-Content (Join-Path $projectRoot $manifest) -Raw

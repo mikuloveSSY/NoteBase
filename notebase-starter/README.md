@@ -61,7 +61,7 @@ npm run desktop:build -- --no-bundle
 npm run test:desktop
 # Windows NSIS 安装包构建命令（本轮未生成/验收）
 npm run desktop:build
-# 便携测试包，要求已构建 release
+# 便携测试包，要求已构建 release，并使用 PowerShell 7+
 ./scripts/package-portable.ps1
 # 在已安装依赖和 Edge 的 Windows 开发环境执行完整检查
 ./scripts/verify.ps1
