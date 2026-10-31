@@ -17,6 +17,7 @@ pub type NoteEvents = Arc<dyn Fn(&str, Value) + Send + Sync>;
 pub type DataFactory =
     Box<dyn Fn(&str, &str) -> Result<Box<dyn crate::data_services::DataService>> + Send + Sync>;
 pub struct App {
+    scan_cancelled: Arc<std::sync::atomic::AtomicBool>,
     last_sync_attempt: u64,
     busy_command: Option<String>,
     cancel_task: Option<Arc<std::sync::atomic::AtomicBool>>,
@@ -33,8 +34,13 @@ pub struct App {
     settings: Option<Box<dyn crate::settings::SettingsStore>>,
 }
 impl App {
+    /// Shell-only handle; setting it never waits on the application mutex.
+    pub fn scan_cancel_handle(&self) -> Arc<std::sync::atomic::AtomicBool> {
+        self.scan_cancelled.clone()
+    }
     pub fn new(factory: StoreFactory) -> Self {
         Self {
+            scan_cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             last_sync_attempt: 0,
             busy_command: None,
             cancel_task: None,
@@ -134,6 +140,8 @@ impl App {
         }
     }
     pub fn dispatch(&mut self, mut r: Request) -> Response {
+        self.scan_cancelled
+            .store(false, std::sync::atomic::Ordering::Release);
         if r.payload.is_object() && r.command == "note_save" && r.payload.get("clientSeq").is_none()
         {
             r.payload["clientSeq"] = json!(r.client_seq);
@@ -250,7 +258,8 @@ impl App {
             .as_ref()
             .ok_or_else(|| AppError::new("E_INTERNAL", "未配置库迁移适配器"))?;
         let copied = location.copy_verified(&source, target)?;
-        let store = (self.factory)(&copied)?;
+        let mut store = (self.factory)(&copied)?;
+        store.set_scan_cancel(self.scan_cancelled.clone());
         store.list(&RelPath::root())?;
         let vault = store.vault_path();
         let id = content_hash(vault.as_bytes())[7..23].to_owned();
@@ -308,7 +317,8 @@ impl App {
                 return Ok(json!({"ok":true}));
             }
             "vault_open" => {
-                let store = (self.factory)(field(p, "path")?)?;
+                let mut store = (self.factory)(field(p, "path")?)?;
+                store.set_scan_cancel(self.scan_cancelled.clone());
                 let vault = store.vault_path();
                 let count = store.list(&RelPath::root())?.len();
                 let id = content_hash(vault.as_bytes())[7..23].to_owned();

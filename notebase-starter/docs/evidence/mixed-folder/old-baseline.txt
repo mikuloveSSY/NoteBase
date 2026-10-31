@@ -1,0 +1,41 @@
+
+> notebase-starter@0.7.0 test:desktop
+> playwright test --config playwright.desktop.config.ts --grep 程序目录父级
+
+
+Running 1 test using 1 worker
+
+(node:39308) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  1 tests\desktop\storage.spec.ts:78:1 › 程序目录父级立即拒绝且之后可打开普通混合文件夹 (6.2s)
+
+
+  1) tests\desktop\storage.spec.ts:78:1 › 程序目录父级立即拒绝且之后可打开普通混合文件夹 ──────────────────────────────────
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: locator('#status')
+    Expected substring: "软件运行目录"
+    Received string:    "准备就绪"
+    Timeout: 5000ms
+
+    Call log:
+      - Expect "toContainText" locator('#status') with timeout 5000ms
+      - waiting for locator('#status')
+        14 × locator resolved to <span id="status" role="status" aria-live="polite">准备就绪</span>
+           - unexpected value "准备就绪"
+
+
+      78 | test('程序目录父级立即拒绝且之后可打开普通混合文件夹',async({desktopPage:page,vault})=>{
+      79 |  await page.locator('#sidebarTools>summary').click();await page.getByLabel('笔记库绝对路径').fill('D:\\NoteBase');await page.locator('#openPath').click();
+    > 80 |  await expect(page.locator('#status')).toContainText('软件运行目录',{timeout:5000});await expect(page.locator('#openPath')).toBeEnabled();
+         |                                        ^
+      81 |  await writeFile(resolve(vault,'正常.md'),'# 混合目录\n仍可编辑');await writeFile(resolve(vault,'photo.png'),Buffer.from([255,0,254]));await writeFile(resolve(vault,'manual.pdf'),Buffer.from([255,0,254]));
+      82 |  await openVault(page,vault);await expect(page.locator('#notes button')).toHaveCount(1);await page.getByRole('button',{name:'正常.md',exact:true}).click();await expect(page.locator('.cm-content')).toContainText('仍可编辑');
+      83 |  expect(await readFile(resolve(vault,'manual.pdf'))).toEqual(Buffer.from([255,0,254]));
+        at D:\NoteBase\repository\notebase-starter\tests\desktop\storage.spec.ts:80:40
+
+    Error Context: test-results\desktop\storage-程序目录父级立即拒绝且之后可打开普通混合文件夹\error-context.md
+
+  1 failed
+    tests\desktop\storage.spec.ts:78:1 › 程序目录父级立即拒绝且之后可打开普通混合文件夹 ───────────────────────────────────

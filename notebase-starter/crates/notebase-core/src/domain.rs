@@ -277,6 +277,8 @@ pub type StoreResult<T> = std::result::Result<T, StoreError>;
 // 字节保真读写边界：编码/换行和 frontmatter 的编辑语义由 application 编排。
 // delete 是物理删除原语，普通笔记删除由 note-svc 使用 rename 移至 trash/。
 pub trait NoteStore: Send {
+    /// Internal cooperative cancellation for directory enumeration; legacy ports remain valid.
+    fn set_scan_cancel(&mut self, _cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>) {}
     fn read(&self, path: &RelPath) -> StoreResult<StoredNote>;
     fn write_atomic(&self, path: &RelPath, body: &[u8]) -> StoreResult<WriteOutcome>;
     fn create_new(&self, path: &RelPath) -> StoreResult<()>;

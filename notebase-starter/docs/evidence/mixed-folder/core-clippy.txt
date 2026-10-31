@@ -1,0 +1,2 @@
+    Checking notebase-core v0.7.0 (D:\NoteBase\repository\notebase-starter\crates\notebase-core)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.48s

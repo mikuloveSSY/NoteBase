@@ -75,6 +75,14 @@ const test = base.extend<{ desktopPage: Page; vault: string }>({
 
 test.skip(process.platform !== 'win32', '真实桌面测试使用 Windows WebView2');
 
+test('程序目录父级立即拒绝且之后可打开普通混合文件夹',async({desktopPage:page,vault})=>{
+ await page.locator('#sidebarTools>summary').click();await page.getByLabel('笔记库绝对路径').fill('D:\\NoteBase');await page.locator('#openPath').click();
+ await expect(page.locator('#status')).toContainText('软件运行目录',{timeout:5000});await expect(page.locator('#openPath')).toBeEnabled();
+ await writeFile(resolve(vault,'正常.md'),'# 混合目录\n仍可编辑');await writeFile(resolve(vault,'photo.png'),Buffer.from([255,0,254]));await writeFile(resolve(vault,'manual.pdf'),Buffer.from([255,0,254]));
+ await openVault(page,vault);await expect(page.locator('#notes button')).toHaveCount(1);await page.getByRole('button',{name:'正常.md',exact:true}).click();await expect(page.locator('.cm-content')).toContainText('仍可编辑');
+ expect(await readFile(resolve(vault,'manual.pdf'))).toEqual(Buffer.from([255,0,254]));
+});
+
 test('真实桌面已注册原生文件夹选择插件且具有打开权限',async({desktopPage:page})=>{
  await expect(page.getByRole('button',{name:'选择笔记库文件夹…',exact:true})).toBeEnabled();
  // Fail option decoding before displaying a modal. This verifies real plugin/ACL

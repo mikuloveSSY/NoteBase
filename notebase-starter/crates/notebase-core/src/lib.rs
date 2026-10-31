@@ -27,25 +27,33 @@ pub fn new_local_app() -> App {
 /// Persistent drafts and rename recovery, without requiring an index session.
 pub fn new_stateful_app(data_root: std::path::PathBuf) -> App {
     let service_root = data_root.clone();
-    App::new(Box::new(|path| Ok(Box::new(infra::FsStore::open(path)?))))
-        .with_support(Box::new(move |vault, id| {
-            let root = note_files::private_state_root(&data_root, vault, id)?;
-            Ok((
-                Box::new(note_files::FsNoteFiles::open(vault)?),
-                match note_state::FsNoteStateStore::open(&root) {
-                    Ok(state) => Box::new(state) as Box<dyn note_state::NoteStateStore>,
-                    Err(error) => Box::new(UnavailableState(error.message)),
-                },
-            ))
-        }))
-        .with_data(Box::new(move |vault, id| {
-            Ok(
-                match data_services::LocalDataService::open(vault, &service_root, id) {
-                    Ok(service) => Box::new(service) as Box<dyn data_services::DataService>,
-                    Err(error) => Box::new(UnavailableData(error.message)),
-                },
-            )
-        }))
+    let location_root = data_root.clone();
+    App::new(Box::new(move |path| {
+        let store = infra::FsStore::open(path)?;
+        let vault = crate::domain::NoteStore::vault_path(&store);
+        let id = &crate::note_service::content_hash(vault.as_bytes())[7..23];
+        // Enforce the existing outside-vault rule before recursively scanning.
+        note_files::private_state_root(&location_root, &vault, id)?;
+        Ok(Box::new(store))
+    }))
+    .with_support(Box::new(move |vault, id| {
+        let root = note_files::private_state_root(&data_root, vault, id)?;
+        Ok((
+            Box::new(note_files::FsNoteFiles::open(vault)?),
+            match note_state::FsNoteStateStore::open(&root) {
+                Ok(state) => Box::new(state) as Box<dyn note_state::NoteStateStore>,
+                Err(error) => Box::new(UnavailableState(error.message)),
+            },
+        ))
+    }))
+    .with_data(Box::new(move |vault, id| {
+        Ok(
+            match data_services::LocalDataService::open(vault, &service_root, id) {
+                Ok(service) => Box::new(service) as Box<dyn data_services::DataService>,
+                Err(error) => Box::new(UnavailableData(error.message)),
+            },
+        )
+    }))
 }
 pub fn new_indexed_app(data_root: std::path::PathBuf, events: index::worker::EventSink) -> App {
     let settings = data_root.join("settings.json");

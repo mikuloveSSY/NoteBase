@@ -15,6 +15,61 @@ fn setup() -> (tempfile::TempDir, FsStore) {
 }
 
 #[test]
+fn mixed_non_markdown_files_are_ignored_without_modification() {
+    let (dir, store) = setup();
+    fs::create_dir(dir.path().join("课程")).unwrap();
+    fs::write(dir.path().join("A.md"), "笔记").unwrap();
+    fs::write(dir.path().join("课程/B.MD"), "第二篇").unwrap();
+    for name in [
+        "image.png",
+        "document.pdf",
+        "archive.zip",
+        "program.exe",
+        "raw.bin",
+    ] {
+        fs::write(dir.path().join(name), [0xff, 0x00, 0xfe]).unwrap();
+    }
+    assert_eq!(
+        store
+            .list(&RelPath::root())
+            .unwrap()
+            .into_iter()
+            .map(|e| e.path)
+            .collect::<Vec<_>>(),
+        ["A.md", "课程/B.MD"]
+    );
+    for name in [
+        "image.png",
+        "document.pdf",
+        "archive.zip",
+        "program.exe",
+        "raw.bin",
+    ] {
+        assert_eq!(fs::read(dir.path().join(name)).unwrap(), [0xff, 0x00, 0xfe]);
+    }
+}
+
+#[test]
+fn directory_scan_cancellation_returns_no_partial_list_and_can_be_retried() {
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
+    let (dir, mut store) = setup();
+    fs::write(dir.path().join("A.md"), "unchanged").unwrap();
+    fs::write(dir.path().join("ignored.bin"), [0xff]).unwrap();
+    let flag = Arc::new(AtomicBool::new(true));
+    store.set_scan_cancel(flag.clone());
+    assert_eq!(
+        AppError::from(store.list(&RelPath::root()).unwrap_err()).code,
+        "E_CANCELLED"
+    );
+    flag.store(false, Ordering::Release);
+    assert_eq!(store.list(&RelPath::root()).unwrap().len(), 1);
+    assert_eq!(fs::read(dir.path().join("A.md")).unwrap(), b"unchanged");
+}
+
+#[test]
 fn path_rules_cover_unicode_devices_separators_and_lengths() {
     for input in [
         "COM¹.md",

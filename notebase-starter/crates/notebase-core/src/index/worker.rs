@@ -172,7 +172,8 @@ impl BackgroundIndex {
                     };
                     if let Some(archive)=&recovered.archived{if state2.lock().unwrap().active{events2("error.raised",json!({"code":"E_INDEX_UNAVAILABLE","message":"原索引已归档并重新构建；请核对历史业务状态","detail":{"recoveryDir":archive,"businessRestored":recovered.business_restored}}));}}
                     let index=Arc::new(recovered.store);*worker_readers.lock().unwrap()=Some(Arc::downgrade(&index));
-                    let store = FsStore::open(&vault)?;
+                    let mut store = FsStore::open(&vault)?;
+                    store.set_scan_cancel(cancel2.clone());
                     let watcher_failed=Arc::new(AtomicBool::new(false));
                     let mut watcher=if options.native_watch{
                         match super::watcher::start(Path::new(&store.vault_path()),work_queue.clone(),wake,watcher_failed.clone()){

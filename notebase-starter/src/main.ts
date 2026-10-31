@@ -190,6 +190,7 @@ async function releaseVault() {
 async function open(path = $<HTMLInputElement>('vaultPath').value) {
   if (!await releaseVault()) return;
   $<HTMLInputElement>('vaultPath').value = path;
+  status('正在扫描所选笔记库；大型目录可能需要一些时间。');
   await call('vault_open', { path });
   opened = true;
   if (desktopMode) { const info = await vaultCall<{ vaultPath: string }>('vault_info'); $<HTMLInputElement>('vaultPath').value = info.vaultPath; }

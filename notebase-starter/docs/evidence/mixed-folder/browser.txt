@@ -1,0 +1,58 @@
+
+> notebase-starter@0.7.0 test:e2e
+> playwright test
+
+[WebServer] (node:35608) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 37 tests using 5 workers
+
+(node:36848) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:42196) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:21724) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:21460) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:29688) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  2 tests\browser\member3.spec.ts:31:1 › 选择文件夹后自动填入并打开所选中文路径 (1.2s)
+  ok  5 tests\browser\member2.spec.ts:25:1 › 异步保存不冻结输入，旧回包不会把后续输入标为已保存 (1.3s)
+  ok  1 tests\browser\editor.spec.ts:3:1 › 演示模式编辑 保存并重新打开 (1.4s)
+  ok  3 tests\browser\input-dialog.spec.ts:4:1 › 应用输入弹窗居中，空标题就地提示，取消和Escape保留当前笔记 (1.6s)
+  ok  4 tests\browser\member4.spec.ts:2:1 › 侧栏工具默认收起，折叠保留编辑和文件列表，展开状态可恢复 (2.0s)
+  ok  6 tests\browser\member3.spec.ts:36:1 › 搜索弹窗保留全部筛选排序、摘要与分页，点击结果打开笔记并保留条件 (1.1s)
+  ok  7 tests\browser\member2.spec.ts:36:1 › 冲突提供三个显式选择，关闭弹窗后仍暂停且保留本地输入 (991ms)
+  ok  8 tests\browser\editor.spec.ts:13:1 › 新建同名笔记生成独立路径 刷新重置演示 (894ms)
+  ok  9 tests\browser\input-dialog.spec.ts:27:1 › 重命名后端校验显示在输入框下方，修正后保留原有计划确认流程 (855ms)
+  ok 10 tests\browser\member4.spec.ts:19:1 › 主题和编辑器偏好持久化，冲突快捷键不覆盖旧设置 (1.0s)
+  ok 13 tests\browser\editor.spec.ts:21:1 › 修正系统保留名并向用户说明实际路径 (634ms)
+  ok 12 tests\browser\member2.spec.ts:48:1 › 切换轻量标签前flush，并从启动恢复列表显式恢复草稿 (790ms)
+  ok 11 tests\browser\member3.spec.ts:48:1 › 搜索错误就地显示，修改条件使旧分页失效，可重建索引并取消 (850ms)
+  ok 15 tests\browser\editor.spec.ts:50:1 › 非法编码只读预览 禁止编辑和快捷键保存 (598ms)
+  ok 14 tests\browser\member4.spec.ts:28:1 › 恢复标签页和当前笔记，缓存中不存正文 (736ms)
+  ok 16 tests\browser\member2.spec.ts:56:1 › 周期检查clean自动重读，dirty保留本地并暂停 (817ms)
+  ok 17 tests\browser\member3.spec.ts:55:1 › 取消在途搜索不会重新弹出窗口，窄窗口仍可使用并显示结果 (876ms)
+  ok 18 tests\browser\editor.spec.ts:61:1 › 超大文件显示预览截断说明 (527ms)
+  ok 19 tests\browser\member4.spec.ts:34:1 › 命令面板可全键盘操作，专注模式保留退出入口 (713ms)
+  ok 21 tests\browser\member3.spec.ts:62:1 › 应用输入提交期间禁用重复确定与取消，笔记快照允许空说明 (800ms)
+  ok 22 tests\browser\editor.spec.ts:69:1 › 可以加载第501篇笔记并保持列表选择 (696ms)
+  ok 20 tests\browser\member2.spec.ts:65:1 › demo支持模板、属性、rename计划取消零写、回收站和二次确认删除 (1.3s)
+  ok 23 tests\browser\member3.spec.ts:70:1 › 取消选择不切库不丢失当前编辑 (530ms)
+  ok 25 tests\browser\member3.spec.ts:78:1 › 选择器报错时保留当前库并允许按路径打开 (495ms)
+  ok 24 tests\browser\member2.spec.ts:81:1 › 粘贴与拖放File插入光标并自动保存，链接面板与SVG图可导航缩放 (684ms)
+  ok 26 tests\browser\member3.spec.ts:83:1 › 隔离的预览消费当前未保存文本 (920ms)
+  ok 27 tests\browser\member3.spec.ts:84:1 › 默认分栏且三种视图切换保留编辑内容并记住选择 (1.0s)
+  ok 28 tests\browser\member3.spec.ts:92:1 › 预览失败可继续编辑并在内容更新后重试，缺失图片有明确提示 (1.3s)
+  ok 29 tests\browser\member3.spec.ts:100:1 › 切换笔记库清除旧预览，窄窗口上下排列且专注布局保留视图入口 (658ms)
+  ok 30 tests\browser\member3.spec.ts:109:1 › 导出展示缺失资源和链接警告 (390ms)
+  ok 31 tests\browser\member3.spec.ts:110:1 › 版本可对比并在明确确认后回滚 (512ms)
+  ok 32 tests\browser\member3.spec.ts:111:1 › 整库备份和仅校验均有可见结果 (430ms)
+  ok 33 tests\browser\member3.spec.ts:112:1 › 同步配置清空密码 并展示冲突路径 (465ms)
+  ok 34 tests\browser\member3.spec.ts:114:1 › PDF 导出可选择并提示浏览器要求 (399ms)
+  ok 35 tests\browser\member3.spec.ts:116:1 › 版本保留可关闭并通过既有设置命令保存 (399ms)
+  ok 36 tests\browser\member3.spec.ts:123:1 › 恢复回退失败时显示原库保留路径与快照路径 (420ms)
+  ok 37 tests\browser\member3.spec.ts:129:1 › 迟到预览不会覆盖较新的编辑文本 (1.3s)
+
+  37 passed (16.7s)

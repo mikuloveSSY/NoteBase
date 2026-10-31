@@ -1,0 +1,11 @@
+{
+  "kind": "read-only metadata sample, not software performance",
+  "root": "D:/NoteBase",
+  "files": 90529,
+  "directories": 9471,
+  "markdown": 29675,
+  "budgetEntries": 100000,
+  "budgetReached": true,
+  "completeCount": false,
+  "elapsedSeconds": 1.626
+}

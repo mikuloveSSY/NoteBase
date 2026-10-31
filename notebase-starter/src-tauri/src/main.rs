@@ -5,12 +5,93 @@ use tauri::{Emitter, Manager, State};
 mod shortcut;
 struct Shell {
     shutting_down: std::sync::atomic::AtomicBool,
+    scan_cancelled: Arc<std::sync::atomic::AtomicBool>,
     app: Mutex<App>,
     logger: notebase_core::logger::Logger,
     shortcut: shortcut::GlobalShortcut,
     handle: tauri::AppHandle,
 }
 type Shared = Arc<Shell>;
+fn validate_vault_location(
+    path: &str,
+    executable: &std::path::Path,
+) -> notebase_core::domain::Result<()> {
+    // Invalid/missing paths are still diagnosed by the original core validator.
+    if let Ok(root) = std::fs::canonicalize(path) {
+        let contains_executable =
+            std::fs::canonicalize(executable).is_ok_and(|exe| exe.starts_with(&root));
+        // Also recognize our source workspace when the running app is installed elsewhere.
+        let own_project = [
+            "src-tauri/tauri.conf.json",
+            "notebase-starter/src-tauri/tauri.conf.json",
+            "repository/notebase-starter/src-tauri/tauri.conf.json",
+        ]
+        .iter()
+        .any(|relative| {
+            use std::io::Read;
+            let Ok(file) = std::fs::File::open(root.join(relative)) else {
+                return false;
+            };
+            let mut text = String::new();
+            if file.take(65536).read_to_string(&mut text).is_err() {
+                return false;
+            }
+            serde_json::from_str::<serde_json::Value>(&text)
+                .is_ok_and(|config| config["identifier"] == "edu.notebase.desktop")
+        });
+        if contains_executable || own_project {
+            return Err(notebase_core::domain::AppError::new(
+                "E_PATH_INVALID",
+                "不能将软件运行目录、开发目录或其上级目录作为笔记库，请选择专用笔记文件夹",
+            ));
+        }
+    }
+    Ok(())
+}
+fn close_guard(core: &Mutex<App>, scan: &std::sync::atomic::AtomicBool) -> Option<&'static str> {
+    match core.try_lock() {
+        Ok(core) if core.data_task_active() => {
+            core.request_data_task_cancel();
+            Some("正在取消后台任务；完成文件核对后可再次关闭窗口")
+        }
+        Ok(_) => None,
+        Err(std::sync::TryLockError::WouldBlock) => {
+            scan.store(true, std::sync::atomic::Ordering::Release);
+            Some("后台操作尚未结束，已请求中止目录扫描；请稍后再次关闭窗口")
+        }
+        Err(std::sync::TryLockError::Poisoned(_)) => Some("应用状态异常，暂时无法安全关闭窗口"),
+    }
+}
+fn defer_windowless_exit(handle: &tauri::AppHandle, shared: Shared) {
+    if !handle.webview_windows().is_empty() {
+        return;
+    }
+    let handle = handle.clone();
+    // Wait off the UI thread if the last window disappeared during an IPC race.
+    tauri::async_runtime::spawn_blocking(move || loop {
+        let ready = match shared.app.lock() {
+            Ok(core) if core.data_task_active() => {
+                core.request_data_task_cancel();
+                false
+            }
+            Ok(_) => {
+                shared
+                    .shutting_down
+                    .store(true, std::sync::atomic::Ordering::Release);
+                true
+            }
+            Err(_) => return,
+        };
+        if ready {
+            handle.exit(0);
+            return;
+        }
+        if !handle.webview_windows().is_empty() {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    });
+}
 fn same_vault_path(current: &serde_json::Value, requested: &serde_json::Value) -> bool {
     let (Some(current), Some(requested)) = (current.as_str(), requested.as_str()) else {
         return false;
@@ -51,6 +132,14 @@ async fn dispatch(expected: &str, request: Request, app: Shared) -> Response {
     }
     let id = request.id.clone();
     match tauri::async_runtime::spawn_blocking(move || {
+        if request.command == "vault_open" {
+            if let (Some(path), Ok(exe)) = (request.payload["path"].as_str(), std::env::current_exe()) {
+                if let Err(error) = validate_vault_location(path, &exe) {
+                    let _ = app.logger.record("app-shell", "vault_open", Some(&error.code));
+                    return Response::Err { id:request.id, ok:false, error };
+                }
+            }
+        }
         if matches!(request.command.as_str(), "export_note" | "backup_restore" | "sync_now") || (request.command == "backup_create" && request.payload["scope"] != "note") {
             let prepared = match app.app.lock() {
                 Ok(mut core) => {
@@ -87,6 +176,7 @@ async fn dispatch(expected: &str, request: Request, app: Shared) -> Response {
         match app.app.lock() {
         Ok(mut core) => {
             let failure = |code: &str, message: &str| Response::Err { id: request.id.clone(), ok: false, error: notebase_core::domain::AppError::new(code, message) };
+            if app.shutting_down.load(std::sync::atomic::Ordering::Acquire) { return failure("E_CANCELLED", "应用正在退出"); }
             if core.data_task_active() && request.command == "settings_set" { return failure("E_CANCELLED", "后台任务执行中，请稍后修改设置"); }
             if app.handle.webview_windows().len()>1 && (request.command=="vault_open" || (request.command=="settings_set" && request.payload["values"].get("vaultPath").is_some())) {
                 let info=core.dispatch(Request{id:"shell-vault".into(),command:"vault_info".into(),payload:serde_json::json!({}),client_seq:0});
@@ -229,6 +319,7 @@ fn main() {
             }
             let shared = Arc::new(Shell {
                 shutting_down: std::sync::atomic::AtomicBool::new(false),
+                scan_cancelled: core.scan_cancel_handle(),
                 app: Mutex::new(core),
                 logger,
                 shortcut,
@@ -243,7 +334,12 @@ fn main() {
                 for sync in [false, true] {
                     let prepared = match shared.app.try_lock() {
                         Ok(mut core) => {
-                            if shared.shutting_down.load(std::sync::atomic::Ordering::Acquire) { break; }
+                            if shared
+                                .shutting_down
+                                .load(std::sync::atomic::Ordering::Acquire)
+                            {
+                                break;
+                            }
                             core.next_background_task(notebase_core::index::now_ms(), sync)
                         }
                         Err(_) => continue,
@@ -280,12 +376,12 @@ fn main() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if let Some(shared) = window.app_handle().try_state::<Shared>() {
-                    if let Ok(core) = shared.app.lock() {
-                        if core.data_task_active() {
-                            core.request_data_task_cancel();
-                            api.prevent_close();
-                            let _ = window.emit("notebase:error_raised", serde_json::json!({"code":"E_CANCELLED","message":"正在取消后台任务；完成文件核对后可再次关闭窗口"}));
-                        }
+                    if let Some(message) = close_guard(&shared.app, &shared.scan_cancelled) {
+                        api.prevent_close();
+                        let _ = window.emit(
+                            "notebase:error_raised",
+                            serde_json::json!({"code":"E_CANCELLED","message":message}),
+                        );
                     }
                 }
             }
@@ -330,11 +426,86 @@ fn main() {
         .run(|app, event| {
             if let tauri::RunEvent::ExitRequested { api, .. } = event {
                 let shared = app.state::<Shared>();
-                match shared.app.lock() {
-                    Ok(core) if core.data_task_active() => { core.request_data_task_cancel(); api.prevent_exit(); }
-                    Ok(_) => shared.shutting_down.store(true, std::sync::atomic::Ordering::Release),
-                    Err(_) => api.prevent_exit(),
-                };
+                if close_guard(&shared.app, &shared.scan_cancelled).is_some() {
+                    api.prevent_exit();
+                    defer_windowless_exit(app, shared.inner().clone());
+                } else {
+                    shared
+                        .shutting_down
+                        .store(true, std::sync::atomic::Ordering::Release);
+                }
             }
         });
+}
+
+#[cfg(test)]
+mod responsiveness_tests {
+    use super::*;
+    #[test]
+    fn app_directory_and_ancestors_are_rejected_but_note_subfolders_are_allowed() {
+        let root = std::env::temp_dir().join(format!(
+            "notebase-location-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        std::fs::create_dir_all(root.join("app/notes")).unwrap();
+        let exe = root.join("app/NoteBase.exe");
+        std::fs::write(&exe, b"test fixture").unwrap();
+        assert_eq!(
+            validate_vault_location(root.to_str().unwrap(), &exe)
+                .unwrap_err()
+                .code,
+            "E_PATH_INVALID"
+        );
+        assert!(validate_vault_location(root.join("app").to_str().unwrap(), &exe).is_err());
+        assert!(validate_vault_location(root.join("app/notes").to_str().unwrap(), &exe).is_ok());
+        let source = root.join("workspace/repository/notebase-starter/src-tauri");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(
+            source.join("tauri.conf.json"),
+            br#"{"identifier":"edu.notebase.desktop"}"#,
+        )
+        .unwrap();
+        assert!(validate_vault_location(root.join("workspace").to_str().unwrap(), &exe).is_err());
+        // The executable is outside workspace: this covers an installed app selecting its source folder.
+        std::fs::remove_file(source.join("tauri.conf.json")).unwrap();
+        for path in [
+            &source,
+            &root.join("workspace/repository/notebase-starter"),
+            &root.join("workspace/repository"),
+            &root.join("workspace"),
+        ] {
+            std::fs::remove_dir(path).unwrap();
+        }
+        // Exact, test-owned leaf files only; no recursive cleanup of a computed path.
+        std::fs::remove_file(exe).unwrap();
+        std::fs::remove_dir(root.join("app/notes")).unwrap();
+        std::fs::remove_dir(root.join("app")).unwrap();
+        std::fs::remove_dir(root).unwrap();
+    }
+    #[test]
+    fn closing_during_a_locked_operation_never_waits_on_the_ui_thread() {
+        let core = Arc::new(Mutex::new(notebase_core::new_local_app()));
+        let scan = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let held = core.lock().unwrap();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let other = core.clone();
+        let cancelled = scan.clone();
+        let task = std::thread::spawn(move || {
+            sender
+                .send(close_guard(&other, &cancelled).is_some())
+                .unwrap();
+        });
+        assert!(receiver
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .unwrap());
+        assert!(scan.load(std::sync::atomic::Ordering::Acquire));
+        drop(held);
+        task.join().unwrap();
+        assert!(close_guard(&core, &scan).is_none());
+    }
 }

@@ -14,6 +14,7 @@ use walkdir::WalkDir;
 
 pub struct FsStore {
     root: PathBuf,
+    scan_cancelled: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl FsStore {
@@ -36,7 +37,10 @@ impl FsStore {
         if !root.is_dir() {
             return Err(AppError::new("E_VAULT_NOT_FOUND", "笔记库必须是文件夹"));
         }
-        Ok(Self { root })
+        Ok(Self {
+            root,
+            scan_cancelled: None,
+        })
     }
 
     fn resolve(&self, path: &RelPath) -> StoreResult<PathBuf> {
@@ -158,6 +162,9 @@ fn sync_directory(path: &Path) -> std::io::Result<()> {
 }
 
 impl NoteStore for FsStore {
+    fn set_scan_cancel(&mut self, cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>) {
+        self.scan_cancelled = Some(cancelled);
+    }
     fn vault_path(&self) -> String {
         self.root.to_string_lossy().into()
     }
@@ -255,26 +262,19 @@ impl NoteStore for FsStore {
             return Err(AppError::new("E_PATH_INVALID", "列表根路径必须是文件夹").into());
         }
         let mut entries = Vec::new();
-        for entry in WalkDir::new(&scan_root)
-            .follow_links(false)
-            .into_iter()
-            .filter_entry(|e| {
-                if e.depth() == 0 {
-                    return true;
-                }
-                if fs::symlink_metadata(e.path())
-                    .map(|m| is_link(&m))
-                    .unwrap_or(false)
-                {
-                    return false;
-                }
-                !(e.path().parent() == Some(self.root.as_path())
-                    && matches!(
-                        e.file_name().to_str(),
-                        Some("trash" | "attachments" | ".git")
-                    ))
-            })
-        {
+        let mut walk = WalkDir::new(&scan_root).follow_links(false).into_iter();
+        loop {
+            // Check even between ignored files, not just between Markdown notes.
+            if self
+                .scan_cancelled
+                .as_ref()
+                .is_some_and(|flag| flag.load(std::sync::atomic::Ordering::Acquire))
+            {
+                return Err(AppError::new("E_CANCELLED", "目录扫描已取消，原文件未修改").into());
+            }
+            let Some(entry) = walk.next() else {
+                break;
+            };
             let entry = entry.map_err(|e| {
                 let location = e
                     .path()
@@ -294,6 +294,30 @@ impl NoteStore for FsStore {
                 }
                 error
             })?;
+            let markdown = entry
+                .path()
+                .extension()
+                .and_then(|s| s.to_str())
+                .is_some_and(|s| s.eq_ignore_ascii_case("md"));
+            // Non-note files need no metadata probing, canonicalization or reads.
+            if !entry.file_type().is_dir() && !markdown {
+                continue;
+            }
+            if entry.depth() > 0
+                && (fs::symlink_metadata(entry.path())
+                    .map(|m| is_link(&m))
+                    .unwrap_or(false)
+                    || (entry.path().parent() == Some(self.root.as_path())
+                        && matches!(
+                            entry.file_name().to_str(),
+                            Some("trash" | "attachments" | ".git")
+                        )))
+            {
+                if entry.file_type().is_dir() {
+                    walk.skip_current_dir();
+                }
+                continue;
+            }
             if !entry.file_type().is_file()
                 || !entry
                     .path()
