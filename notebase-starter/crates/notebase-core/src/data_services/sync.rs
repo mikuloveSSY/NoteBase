@@ -17,7 +17,8 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     io::Read,
-    time::Duration,
+    sync::{atomic::AtomicBool, Arc},
+    time::{Duration, Instant},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,6 +29,82 @@ pub enum Action {
     DeleteLocal,
     DeleteRemote,
     Conflict,
+}
+
+#[cfg(test)]
+mod cancellation_tests {
+    use super::*;
+    use std::{io::Write, net::TcpListener, sync::atomic::Ordering, sync::mpsc};
+
+    fn cancel_http_retry(during_request: bool) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let flag = Arc::new(AtomicBool::new(false));
+        let cancelled = flag.clone();
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0u8; 1024];
+            while !request.windows(4).any(|part| part == b"\r\n\r\n") {
+                let count = stream.read(&mut buffer).unwrap();
+                assert_ne!(count, 0);
+                request.extend_from_slice(&buffer[..count]);
+            }
+            entered_tx.send(()).unwrap();
+            if during_request {
+                let deadline = Instant::now() + Duration::from_secs(5);
+                while !cancelled.load(Ordering::Acquire) {
+                    assert!(Instant::now() < deadline);
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+            }
+            stream
+                .write_all(
+                    b"HTTP/1.1 503 Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                )
+                .unwrap();
+            listener
+        });
+        let mut backend =
+            WebDav::new(&format!("http://{address}/notes/"), "fixture", "fixture").unwrap();
+        backend.cancelled = flag.clone();
+        let (done_tx, done_rx) = mpsc::channel();
+        let worker = std::thread::spawn(move || done_tx.send(backend.list()).unwrap());
+        entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        if !during_request {
+            std::thread::sleep(Duration::from_millis(150));
+        }
+        flag.store(true, Ordering::Release);
+        assert_eq!(
+            done_rx
+                .recv_timeout(Duration::from_secs(3))
+                .unwrap()
+                .unwrap_err()
+                .code,
+            "E_CANCELLED"
+        );
+        worker.join().unwrap();
+        let listener = server.join().unwrap();
+        listener.set_nonblocking(true).unwrap();
+        assert!(
+            matches!(listener.accept(), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock),
+            "cancel must prevent another HTTP request"
+        );
+    }
+
+    #[test]
+    fn cancellation_after_failed_http_request_prevents_retries() {
+        cancel_http_retry(true);
+    }
+
+    #[test]
+    fn cancellation_interrupts_http_retry_backoff() {
+        cancel_http_retry(false);
+    }
 }
 pub fn plan(base: Option<&str>, local: Option<&str>, remote: Option<&str>) -> Action {
     if local == remote {
@@ -166,6 +243,7 @@ pub struct WebDav {
     base: Url,
     user: String,
     secret: String,
+    cancelled: Arc<AtomicBool>,
 }
 fn network() -> AppError {
     let mut e = AppError::new(
@@ -215,7 +293,27 @@ impl WebDav {
             base: endpoint(url)?,
             user: user.into(),
             secret: secret.into(),
+            cancelled: Arc::new(AtomicBool::new(false)),
         })
+    }
+    fn check_cancelled(&self) -> Result<()> {
+        if self.cancelled.load(std::sync::atomic::Ordering::Acquire) {
+            return Err(AppError::new(
+                "E_CANCELLED",
+                "同步已取消，已完成的文件操作保留并核对",
+            ));
+        }
+        Ok(())
+    }
+    fn backoff(&self, delay: Duration) -> Result<()> {
+        let deadline = Instant::now() + delay;
+        loop {
+            self.check_cancelled()?;
+            let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+                return Ok(());
+            };
+            std::thread::sleep(remaining.min(Duration::from_millis(50)));
+        }
     }
     fn url(&self, path: &str) -> Result<Url> {
         let mut url = self.base.clone();
@@ -241,6 +339,7 @@ impl WebDav {
         let url = self.url(path)?;
         let mut last = network();
         for attempt in 0..=5 {
+            self.check_cancelled()?;
             let mut req = self
                 .client
                 .request(method.clone(), url.clone())
@@ -256,7 +355,11 @@ impl WebDav {
             if let Some(body) = body {
                 req = req.body(body.to_vec());
             }
-            match req.send() {
+            let response = req.send();
+            // A blocking request keeps its existing 30 s timeout. Cancellation
+            // must prevent a fresh request or backoff after that request returns.
+            self.check_cancelled()?;
+            match response {
                 Ok(r) if matches!(r.status(), StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) => {
                     return Err(auth("WebDAV 凭据失效或权限不足"))
                 }
@@ -270,7 +373,7 @@ impl WebDav {
                 _ => {
                     last = network();
                     if attempt < 5 {
-                        std::thread::sleep(Duration::from_secs(1 << attempt));
+                        self.backoff(Duration::from_secs(1 << attempt))?;
                     }
                 }
             }
@@ -539,9 +642,11 @@ impl LocalDataService {
     }
     pub fn sync_run(&self, p: &Value) -> Result<Value> {
         let result = (|| {
+            self.check_cancelled()?;
             let cfg = self.sync_config()?;
             let password = OsCredentials.get(&cfg.credential_ref)?;
-            let backend = WebDav::new(&cfg.endpoint, &cfg.username, &password)?;
+            let mut backend = WebDav::new(&cfg.endpoint, &cfg.username, &password)?;
+            backend.cancelled = self.cancelled.clone();
             self.sync_with(&backend, p)
         })();
         if let Err(e) = &result {
@@ -579,6 +684,7 @@ impl LocalDataService {
                 && !exclusions.is_match(path)
         };
         let result = (|| -> Result<Value> {
+            self.check_cancelled()?;
             let remote = backend.list()?;
             let local_paths = self.files.entries()?;
             let union: BTreeSet<_> = local_paths
@@ -619,6 +725,15 @@ impl LocalDataService {
                 let resolved = p["resolvedPaths"]
                     .as_array()
                     .is_some_and(|v| v.iter().any(|v| v.as_str() == Some(&path)));
+                // A fresh ETag only protects the upcoming PUT. It does not prove
+                // that the user has reviewed this remote revision as a conflict.
+                // Local bytes may differ because manual merging is intentional.
+                if resolved && (previous.state != "conflict" || previous.conflict_remote != rh) {
+                    return Err(AppError::new(
+                        "E_EXTERNAL_MODIFIED",
+                        "冲突尚未确认或远端已再次变化，请先重新同步并检查双份内容",
+                    ));
+                }
                 let base = if resolved {
                     rh.as_deref()
                 } else {

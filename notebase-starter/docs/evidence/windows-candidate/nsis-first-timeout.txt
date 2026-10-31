@@ -1,0 +1,9 @@
+
+> notebase-starter@0.7.0 tauri
+> tauri bundle --bundles nsis --ci --no-binary-patching
+
+        Warn Skipping binary patching for D:\NoteBase\repository\notebase-starter\src-tauri\target\release\notebase.exe due to --no-binary-patching flag.
+        Info Verifying NSIS package
+ Downloading https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.13/nsis-3.13.zip
+failed to bundle project: `timeout: global`
+       Error failed to bundle project: `timeout: global`

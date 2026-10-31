@@ -41,14 +41,16 @@ impl Logger {
                 }
             }
         }
-        let safe_module = if matches!(module, "app-shell" | "ui" | "logger") {
+        let safe_module = if matches!(module, "app-shell" | "ui" | "logger" | "data-services") {
             module
         } else {
             "app-shell"
         };
         let safe_event = if crate::domain::COMMANDS.contains(&event)
-            || matches!(event, "startup" | "shutdown" | "shortcut" | "window")
-        {
+            || matches!(
+                event,
+                "startup" | "shutdown" | "shortcut" | "window" | "clock_rollback"
+            ) {
             event
         } else {
             "unknown"

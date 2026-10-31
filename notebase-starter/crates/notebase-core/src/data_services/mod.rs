@@ -11,6 +11,13 @@ use serde_json::Value;
 pub trait DataService: Send {
     /// Cooperative only: the owner must retain its lease until the job returns.
     fn set_cancel_flag(&mut self, _flag: std::sync::Arc<std::sync::atomic::AtomicBool>) {}
+    /// Internal rename journal hook. Unknown adapters must not silently lose history.
+    fn rename_versions(&self, _from: &str, _to: &str, _id: &str, _check_only: bool) -> Result<()> {
+        Err(crate::domain::AppError::new(
+            "E_FORMAT_UNSUPPORTED",
+            "历史重命名端口未装配",
+        ))
+    }
     fn export(&self, payload: &Value) -> Result<Value>;
     fn backup_create(&self, payload: &Value) -> Result<Value>;
     fn backup_restore(&self, payload: &Value) -> Result<Value>;
@@ -57,6 +64,9 @@ impl LocalDataService {
     }
 }
 impl DataService for LocalDataService {
+    fn rename_versions(&self, from: &str, to: &str, id: &str, check_only: bool) -> Result<()> {
+        versions::rename(self, from, to, id, check_only)
+    }
     fn set_cancel_flag(&mut self, flag: std::sync::Arc<std::sync::atomic::AtomicBool>) {
         self.cancelled = flag;
     }

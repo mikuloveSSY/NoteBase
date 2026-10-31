@@ -3,7 +3,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { access, mkdir, readFile, writeFile, readdir } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { createServer } from 'node:net';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 
 async function availablePort(): Promise<number> {
   const server = createServer();
@@ -21,6 +21,7 @@ const test = base.extend<{ desktopPage: Page; vault: string }>({
     await access(executable);
     const port = await availablePort();
     const app = spawn(executable, [], {
+      cwd: dirname(executable),
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: {
@@ -296,4 +297,26 @@ test('成员三真实IPC导出 快照 备份校验与新位置恢复',async({des
  const backup=await invokeCore(page,'backup_create',{});expect(backup.ok).toBe(true);
  const verified=await invokeCore(page,'backup_restore',{filePath:backup.data.filePath,verifyOnly:true});expect(verified.ok).toBe(true);expect(verified.data.verified).toBe(true);
  const target=testInfo.outputPath('restored');const restored=await invokeCore(page,'backup_restore',{filePath:backup.data.filePath,mode:'new',targetPath:target});expect(restored.ok).toBe(true);expect(await readFile(resolve(target,'A.md'),'utf8')).toBe(body);expect(await readFile(resolve(vault,'A.md'),'utf8')).toBe(body);
+});
+
+test('真实exe重命名保留历史且旧路径新建不串版本',async({desktopPage:page,vault})=>{
+ await writeFile(resolve(vault,'A.md'),'original history');await openVault(page,vault);await page.getByRole('button',{name:'A.md',exact:true}).click();
+ const snap=await invokeCore(page,'backup_create',{scope:'note',path:'A.md',description:'rename history'});expect(snap.ok).toBe(true);
+ const plan=await invokeCore(page,'note_rename',{path:'A.md',newName:'B',planOnly:true});expect(plan.ok).toBe(true);
+ const renamed=await invokeCore(page,'note_rename',{path:'A.md',newName:'B',planOnly:false,planId:plan.data.plan.id});expect(renamed.ok).toBe(true);
+ await page.locator('#refresh').click();await page.getByRole('button',{name:'B.md',exact:true}).click();await page.locator('#versionsRefresh').click();await expect(page.locator('#versions')).toContainText('rename history');
+ const body=await invokeCore(page,'note_read',{path:'B.md',versionId:snap.data.versionId});expect(body.data.body).toBe('original history');
+ expect((await invokeCore(page,'note_create',{title:'A',body:'new owner'})).ok).toBe(true);expect((await invokeCore(page,'backup_create',{scope:'note',path:'A.md'})).ok).toBe(true);
+ const versions=await invokeCore(page,'note_list',{scope:'versions',path:'A.md'});expect(versions.data.items.some((v:{versionId:string})=>v.versionId===snap.data.versionId)).toBe(false);
+ expect(await readFile(resolve(vault,'B.md'),'utf8')).toBe('original history');
+});
+
+test('真实exe版本保留设置可关闭且保存结果不伪报快照',async({desktopPage:page,vault})=>{
+ await writeFile(resolve(vault,'A.md'),'before');await openVault(page,vault);await page.getByRole('button',{name:'A.md',exact:true}).click();
+ await page.locator('#versionRetentionDays').fill('0');await page.locator('#backupSettings').click();await expect(page.locator('#backupResult')).toContainText('版本历史已关闭');
+ await expect(page.locator('#versions')).toContainText('版本历史已关闭');
+ const config=await invokeCore(page,'settings_get',{keys:['backup']});expect(config.data.values.backup.versionRetentionDays).toBe(0);
+ const note=await invokeCore(page,'note_read',{path:'A.md'});const saved=await invokeCore(page,'note_save',{path:'A.md',baseHash:note.data.contentHash,body:'saved without snapshot'});expect(saved.ok).toBe(true);expect(saved.data.snapshotCreated).toBe(false);expect(await readFile(resolve(vault,'A.md'),'utf8')).toBe('saved without snapshot');
+ await page.locator('#versionRetentionDays').fill('5');await page.locator('#backupSettings').click();await expect(page.locator('#backupResult')).toContainText('版本保留 5 天');
+ expect((await invokeCore(page,'settings_get',{keys:['backup']})).data.values.backup.versionRetentionDays).toBe(5);
 });

@@ -216,6 +216,7 @@ impl App {
         Ok(json!({"values":values}))
     }
     fn migrate(&mut self, p: &Value) -> Result<Value> {
+        self.notes()?.ensure_history_ready(None)?;
         let source = self.notes()?.store.vault_path();
         let id = content_hash(source.as_bytes())[7..23].to_owned();
         if let Some(index) = &self.index {
@@ -397,6 +398,7 @@ impl App {
             "sync_configure" => return self.data()?.sync_configure(p),
             "sync_status" => return self.data()?.sync_status(),
             "sync_now" => {
+                self.notes()?.ensure_history_ready(None)?;
                 if let Some(events) = &self.events {
                     events("sync.state", json!({"state":"pending"}));
                 }
@@ -441,6 +443,7 @@ impl App {
             }
             "backup_create" => {
                 if p["scope"] == "note" {
+                    self.notes()?.ensure_history_ready(p["path"].as_str())?;
                     return self.data()?.backup_create(p);
                 }
                 return self.with_index_paused(|service| service.backup_create(p));
@@ -461,15 +464,20 @@ impl App {
                 }
                 return result;
             }
-            "note_list" if p["scope"] == "versions" => return self.data()?.versions(p),
+            "note_list" if p["scope"] == "versions" => {
+                self.notes()?.ensure_history_ready(p["path"].as_str())?;
+                return self.data()?.versions(p);
+            }
             "note_read" if p.get("versionId").is_some() => {
+                self.notes()?.ensure_history_ready(p["path"].as_str())?;
                 return Ok(
                     json!({"body":self.data()?.version_body(p)?,"versionId":p["versionId"],"path":p["path"]}),
-                )
+                );
             }
             _ => {}
         }
         let version = if command == "note_restore" && p["kind"] == "version" {
+            self.notes()?.ensure_history_ready(p["path"].as_str())?;
             Some(self.data()?.version_body(p)?)
         } else {
             None
@@ -502,7 +510,21 @@ impl App {
             "note_delete" => self.notes()?.delete(p, now),
             "note_restore" if p["kind"] == "version" => self.notes()?.save(p, now),
             "note_restore" => self.notes()?.restore(p, now),
-            "note_rename" => self.notes()?.rename(p, now),
+            "note_rename" => {
+                let data = self.data.as_deref();
+                let history = |from: &str, to: &str, id: &str, check_only: bool| {
+                    data.ok_or_else(|| AppError::new("E_FORMAT_UNSUPPORTED", "历史迁移端口不可用"))?
+                        .rename_versions(from, to, id, check_only)
+                };
+                self.notes
+                    .as_mut()
+                    .ok_or_else(|| AppError::new("E_VAULT_NOT_FOUND", "未打开库"))?
+                    .rename_with_history(
+                        p,
+                        now,
+                        data.map(|_| &history as &dyn Fn(&str, &str, &str, bool) -> Result<()>),
+                    )
+            }
             "link_backlinks" | "link_mentions" | "link_graph" => {
                 self.notes()?.link_query(command, p)
             }
@@ -563,7 +585,8 @@ impl App {
                     }
                     service.snapshot(path, &stored.raw, "")
                 })();
-                data["snapshotCreated"] = json!(attempt.is_ok());
+                data["snapshotCreated"] =
+                    json!(attempt.as_ref().is_ok_and(|v| v["snapshotCreated"] == true));
                 if let Some(warnings) = data.get_mut("warnings").and_then(Value::as_array_mut) {
                     warnings.retain(|w| w.as_str() != Some("版本快照尚未接入"));
                     if let Err(e) = attempt {

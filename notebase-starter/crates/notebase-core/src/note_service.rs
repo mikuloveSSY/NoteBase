@@ -38,6 +38,7 @@ pub struct NoteService {
     paused: HashSet<String>,
     changed_paths: BTreeSet<String>,
 }
+type RenameHistory<'a> = Option<&'a dyn Fn(&str, &str, &str, bool) -> Result<()>>;
 impl NoteService {
     pub fn new(
         store: Box<dyn NoteStore>,
@@ -60,6 +61,30 @@ impl NoteService {
             .into_iter()
             .map(|path| RelPath::new(&path).expect("only validated note paths enter mutation set"))
             .collect()
+    }
+    /// Only the ownership-transfer phase blocks paths. Later reference repair
+    /// retains the established ability to edit already completed notes.
+    pub fn ensure_history_ready(&self, path: Option<&str>) -> Result<()> {
+        // An unavailable private store must not disable the authoritative-file
+        // editor. Its normal draft/snapshot operations still report the error.
+        // Apply this guard only to positively identified ownership transfers.
+        let Ok(journals) = self.state.list("renames") else {
+            return Ok(());
+        };
+        for journal in journals {
+            if journal["historyPending"] == true
+                && path.is_none_or(|p| journal["from"] == p || journal["to"] == p)
+            {
+                let mut error = AppError::new(
+                    "E_PARTIAL_RENAME",
+                    "版本历史迁移待恢复，请先继续重命名任务；编辑草稿仍可保留",
+                );
+                error.detail =
+                    json!({"journalId":journal["id"],"from":journal["from"],"to":journal["to"]});
+                return Err(error);
+            }
+        }
+        Ok(())
     }
     pub fn expire_trash(&self, now: u64) -> Result<usize> {
         let mut cleaned = 0;
@@ -219,6 +244,7 @@ impl NoteService {
         self.commit(path, p, &old, &body)
     }
     fn commit(&mut self, path: &str, p: &Value, old: &str, body: &str) -> Result<Value> {
+        self.ensure_history_ready(Some(path))?;
         let output = Self::normalize(body, old);
         if output.len() > NOTE_SIZE_LIMIT {
             return Err(AppError::new("E_FILE_TOO_LARGE", "保存内容超过10 MiB"));
@@ -372,6 +398,7 @@ impl NoteService {
         }
         for _ in 0..10000 {
             let path = self.vacant_path(dir, &name)?;
+            self.ensure_history_ready(Some(&path))?;
             let rp = RelPath::new(&path)?;
             self.files.prepare_parent(&rp)?;
             match self.files.create_note(&rp, body.as_bytes()) {
@@ -468,6 +495,7 @@ impl NoteService {
     }
     pub fn delete(&mut self, p: &Value, now: u64) -> Result<Value> {
         let path = string(p, "path")?;
+        self.ensure_history_ready(Some(path))?;
         let rp = RelPath::new(path)?;
         if p.get("permanent").and_then(Value::as_bool) == Some(true) {
             if p.get("confirmed").and_then(Value::as_bool) != Some(true) {
@@ -523,6 +551,7 @@ impl NoteService {
         let (dir, file) = original.rsplit_once('/').unwrap_or(("", &original));
         for _ in 0..10000 {
             let target = self.vacant_path(dir, &fallback_title(file))?;
+            self.ensure_history_ready(Some(&target))?;
             let rp = RelPath::new(&target)?;
             self.files.prepare_parent(&rp)?;
             match self.store.rename(&RelPath::new(trash)?, &rp) {
@@ -549,6 +578,7 @@ impl NoteService {
             return Ok(json!({"discarded":true}));
         }
         let body = string(&d, "body")?;
+        self.ensure_history_ready(Some(path))?;
         let target = match self.writable_text(&RelPath::new(path)?) {
             Ok((old, hash, _))
                 if d["baseHash"].as_str() == Some(&hash)
@@ -568,6 +598,7 @@ impl NoteService {
     }
     fn attachment(&self, p: &Value, now: u64) -> Result<Value> {
         let path = string(p, "path")?;
+        self.ensure_history_ready(Some(path))?;
         self.writable_text(&Self::ordinary(path)?)?;
         let name = string(p, "name")?;
         let values = p
@@ -680,10 +711,19 @@ impl NoteService {
         })
     }
     pub fn rename(&mut self, p: &Value, now: u64) -> Result<Value> {
+        self.rename_with_history(p, now, None)
+    }
+    pub fn rename_with_history(
+        &mut self,
+        p: &Value,
+        now: u64,
+        history: RenameHistory<'_>,
+    ) -> Result<Value> {
         if let Some(id) = p.get("resumeId").and_then(Value::as_str) {
-            return self.resume_rename(id);
+            return self.resume_rename(id, history);
         }
         let from = string(p, "path")?;
+        self.ensure_history_ready(Some(from))?;
         Self::ordinary(from)?;
         let (dir, _) = from.rsplit_once('/').unwrap_or(("", from));
         let name = domain::sanitize_title(string(p, "newName")?)?;
@@ -697,6 +737,7 @@ impl NoteService {
         } else {
             self.vacant_path(dir, &name)?
         };
+        self.ensure_history_ready(Some(&to))?;
         let docs = self.documents()?;
         let source = docs
             .iter()
@@ -710,7 +751,7 @@ impl NoteService {
                 edits.push(json!({"path":d.path,"beforeHash":content_hash(d.body.as_bytes()),"afterHash":content_hash(new.as_bytes()),"body":new}));
             }
         }
-        let mut journal = json!({"from":from,"to":to,"sourceHash":source_hash,"edits":edits,"createdMs":now,"moved":false,"done":[],"state":"running"});
+        let mut journal = json!({"from":from,"to":to,"sourceHash":source_hash,"edits":edits,"createdMs":now,"moved":false,"done":[],"state":"running","historyPending":history.is_some()});
         let id = key(&serde_json::to_string(
             &json!({"from":from,"to":to,"sourceHash":source_hash,"edits":edits}),
         )
@@ -730,10 +771,13 @@ impl NoteService {
         if from == to {
             return Ok(json!({"renamed":false,"path":from,"updatedFiles":0,"failedFiles":[]}));
         }
+        if let Some(history) = history {
+            history(from, &to, &id, true)?;
+        }
         self.state.write("renames", &id, &journal)?;
-        self.resume_rename(&id)
+        self.resume_rename(&id, history)
     }
-    fn resume_rename(&mut self, id: &str) -> Result<Value> {
+    fn resume_rename(&mut self, id: &str, history: RenameHistory<'_>) -> Result<Value> {
         let mut j = self
             .state
             .read("renames", id)?
@@ -752,6 +796,11 @@ impl NoteService {
                                 "E_EXTERNAL_MODIFIED",
                                 "源文件在预演后被修改",
                             ));
+                        }
+                        if j["historyPending"] == true {
+                            history.ok_or_else(|| {
+                                AppError::new("E_FORMAT_UNSUPPORTED", "历史迁移端口不可用")
+                            })?(&from, &to, id, true)?;
                         }
                         self.files.prepare_parent(&target)?;
                         self.store.rename(&source, &target)?;
@@ -786,6 +835,14 @@ impl NoteService {
                     "E_EXTERNAL_MODIFIED",
                     "原路径在重命名后重新出现，请人工检查",
                 ));
+            }
+            if j["historyPending"] == true {
+                history
+                    .ok_or_else(|| AppError::new("E_FORMAT_UNSUPPORTED", "历史迁移端口不可用"))?(
+                    &from, &to, id, false,
+                )?;
+                j["historyPending"] = json!(false);
+                self.state.write("renames", id, &j)?;
             }
             let current_target = self.store.read(&target)?;
             let target_hash = content_hash(&current_target.raw);
@@ -878,7 +935,10 @@ fn validate_rename_journal(j: &Value, id: &str) -> Result<()> {
             "重命名恢复日志结构或哈希无效；原记录已保留",
         )
     };
-    if j["id"].as_str() != Some(id) || !j["moved"].is_boolean() {
+    if j["id"].as_str() != Some(id)
+        || !j["moved"].is_boolean()
+        || (!j["historyPending"].is_null() && !j["historyPending"].is_boolean())
+    {
         return Err(invalid());
     }
     let from = j["from"].as_str().ok_or_else(invalid)?;

@@ -1,0 +1,28 @@
+{
+  "jobs": 2,
+  "os": "Microsoft Windows 10.0.26200",
+  "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)",
+  "architecture": "X64",
+  "baseCommit": "4401ab78b6f285689f28e72e2b8a01bd6b77b187",
+  "targetDir": "D:/NoteBase/.tools/team-all-core-target",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+  "date": "2026-11-01T03:45:23.7200468+08:00",
+  "node": "v24.16.0",
+  "softwareVersion": "0.7.0 development",
+  "changedRustFiles": [
+    {
+      "path": "crates/notebase-core/src/data_services/sync.rs",
+      "sha256": "EB82A5D8BFE34C3D894162C8B293E3605FF12C6FC3647BE5A199373C84F19F41"
+    },
+    {
+      "path": "crates/notebase-core/tests/member3_sync.rs",
+      "sha256": "6F78A56C1F3F7F3201AFC7A39B6A15F7EA53A307E7E65874747FBA71D24889A9"
+    },
+    {
+      "path": "crates/notebase-core/tests/release_safety.rs",
+      "sha256": "3041C67F296FBDA5AB915328530EAB9FF3EF3DE4CBCBC74B21A58B0D3C5E88EC"
+    }
+  ],
+  "branch": "integration/release-closeout",
+  "cargoIncremental": "0"
+}

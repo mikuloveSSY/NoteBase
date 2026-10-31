@@ -2,6 +2,8 @@
 
 这是四人小组的共同工程。本分支在一二四集成版上真实合入成员三，保留 **0.7.0 开发版**，未正式发布。当前功能、内部接口和验证见 [四人成果整合验收](docs/四人成果整合验收.md)，原成员交接保留其历史状态。
 
+后续Windows候选版已推进历史重命名/中断恢复、保留天数/关闭、回拨序列与恢复故障保护，交付及最新检查见[Windows候选版验收](docs/Windows候选版验收.md)。程序用户参阅[Windows使用说明](docs/Windows使用说明.md)，开发者继续使用下方命令。完整需求状态以根目录需求矩阵为准，不从“可双击启动”推算全部验收完成。
+
 ## 现在具备什么
 
 - Tauri 2 桌面入口、Rust 核心、TypeScript 与 Vite 前端、CodeMirror 6 编辑器。
@@ -17,7 +19,11 @@
 - 已接入成员一 0.7.0：锁外检索、读连接复用、切库取消、中文短词筛选、重建空间回收；最终规模性能仍待复测。
 - 已接入成员三：共用 comrak 安全预览、MD/HTML/Windows PDF/整库导出、版本快照与回滚、备份校验和恢复、WebDAV 与系统凭据。数据长任务在 App 锁外执行，维护时保留编辑草稿并限速重试写入；多窗口先关闭其他窗口再恢复。
 
-**尚未完成验收**：完整需求追溯、角色布局、安装升级卸载、公网 WebDAV/代理、跨平台和最终规模性能；不能从本机测试推定整套需求完成。PDF 需要 Windows Chrome 或 Edge，独立 WebDAV/凭据专项使用临时环回服务。
+**尚未完成验收**：完整需求验收、角色布局、安装升级卸载、公网 WebDAV/代理、跨平台和最终规模性能；不能从本机测试推定整套需求完成。PDF 需要 Windows Chrome 或 Edge，独立 WebDAV/凭据专项使用临时环回服务。
+
+## 已打包程序启动
+
+本轮已生成exe/ZIP和Windows安装器，路径、来源与哈希见[Windows候选版验收](docs/Windows候选版验收.md)。解压程序包后双击NoteBase.exe即可启动，不需要Node/Rust或开发终端；系统需有WebView2。以下是从源码开发启动的步骤。
 
 ## Windows 首次启动
 
@@ -59,7 +65,7 @@ npm run desktop:build -- --no-bundle
 npm run test:desktop
 # Windows NSIS 安装包构建命令（本轮未生成/验收）
 npm run desktop:build
-# 便携测试包，要求已构建 release
+# 便携测试包，要求已构建 release，并使用 PowerShell 7+
 ./scripts/package-portable.ps1
 # 在已安装依赖和 Edge 的 Windows 开发环境执行完整检查
 ./scripts/verify.ps1

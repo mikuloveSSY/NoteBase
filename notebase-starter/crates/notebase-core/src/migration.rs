@@ -184,7 +184,7 @@ fn copy_filtered(
 }
 
 #[cfg(windows)]
-fn publish(from: &Path, to: &Path) -> Result<()> {
+pub(crate) fn publish(from: &Path, to: &Path) -> Result<()> {
     use std::os::windows::ffi::OsStrExt;
     use windows_sys::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_WRITE_THROUGH};
     let source: Vec<_> = from.as_os_str().encode_wide().chain(Some(0)).collect();
@@ -196,7 +196,7 @@ fn publish(from: &Path, to: &Path) -> Result<()> {
     Ok(())
 }
 #[cfg(not(windows))]
-fn publish(_from: &Path, _to: &Path) -> Result<()> {
+pub(crate) fn publish(_from: &Path, _to: &Path) -> Result<()> {
     Err(AppError::new(
         "E_FORMAT_UNSUPPORTED",
         "目录迁移的无覆盖发布当前仅支持 Windows",

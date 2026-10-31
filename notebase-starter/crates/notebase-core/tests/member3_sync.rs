@@ -149,6 +149,54 @@ fn explicit_local_conflict_resolution_uploads_only_after_confirmation_payload() 
     assert_eq!(r.0.borrow().get("A.md").unwrap(), b"local");
 }
 #[test]
+fn conflict_confirmation_rejects_new_remote_revision_until_conflict_is_reviewed_again() {
+    let (_d, vault, svc) = setup();
+    fs::write(vault.join("A.md"), "local").unwrap();
+    let remote = Remote::default();
+    remote
+        .0
+        .borrow_mut()
+        .insert("A.md".into(), b"remote old".to_vec());
+    svc.sync_with(&remote, &json!({})).unwrap();
+    // A different device edits after the UI presented the conflict.
+    remote
+        .0
+        .borrow_mut()
+        .insert("A.md".into(), b"remote new".to_vec());
+    assert_eq!(
+        svc.sync_with(&remote, &json!({"resolvedPaths":["A.md"]}))
+            .unwrap_err()
+            .code,
+        "E_EXTERNAL_MODIFIED"
+    );
+    assert_eq!(remote.0.borrow().get("A.md").unwrap(), b"remote new");
+    assert_eq!(fs::read_to_string(vault.join("A.md")).unwrap(), "local");
+    svc.sync_with(&remote, &json!({})).unwrap();
+    // A local manual merge is expected; it may differ from the old local hash.
+    fs::write(vault.join("A.md"), "manually merged").unwrap();
+    svc.sync_with(&remote, &json!({"resolvedPaths":["A.md"]}))
+        .unwrap();
+    assert_eq!(remote.0.borrow().get("A.md").unwrap(), b"manually merged");
+}
+
+#[test]
+fn resolution_payload_cannot_overwrite_remote_without_a_recorded_conflict() {
+    let (_d, vault, svc) = setup();
+    fs::write(vault.join("A.md"), "local").unwrap();
+    let remote = Remote::default();
+    remote
+        .0
+        .borrow_mut()
+        .insert("A.md".into(), b"remote".to_vec());
+    assert_eq!(
+        svc.sync_with(&remote, &json!({"resolvedPaths":["A.md"]}))
+            .unwrap_err()
+            .code,
+        "E_EXTERNAL_MODIFIED"
+    );
+    assert_eq!(remote.0.borrow().get("A.md").unwrap(), b"remote");
+}
+#[test]
 fn known_remote_delete_moves_local_to_recoverable_private_storage() {
     let (d, vault, svc) = setup();
     fs::write(vault.join("A.md"), "base").unwrap();
@@ -230,6 +278,24 @@ fn offline_failure_is_visible_and_next_run_catches_up() {
     svc.sync_with(&r, &json!({})).unwrap();
     assert_eq!(r.0.borrow().get("A.md").unwrap(), b"offline content");
     assert!(svc.sync_status().unwrap()["lastError"].is_null());
+}
+#[test]
+fn cancelled_sync_does_not_start_transport_or_replace_local_content() {
+    use notebase_core::data_services::DataService;
+    use std::sync::{atomic::AtomicBool, Arc};
+    let (_d, vault, mut svc) = setup();
+    fs::write(vault.join("A.md"), "keep local").unwrap();
+    svc.set_cancel_flag(Arc::new(AtomicBool::new(true)));
+    // If contacted, this backend returns E_SYNC_NETWORK rather than cancellation.
+    assert_eq!(
+        svc.sync_with(&Offline, &json!({})).unwrap_err().code,
+        "E_CANCELLED"
+    );
+    assert_eq!(svc.sync_status().unwrap()["lastError"], "E_CANCELLED");
+    assert_eq!(
+        fs::read_to_string(vault.join("A.md")).unwrap(),
+        "keep local"
+    );
 }
 #[test]
 fn status_reports_unsynced_local_edits_after_a_clean_sync() {
