@@ -17,6 +17,8 @@ async function dataBridge(page:Page){
  if(command==='note_save'){if(p.action==='draft')return {};body=p.body;hash='saved';return {path:'A.md',contentHash:hash,mtimeMs:1,bytesWritten:body.length,snapshotCreated:true,indexQueued:true,warnings:[]};}
  if(command==='note_restore'){body='# 历史内容';hash='old';return {path:'A.md',contentHash:hash,mtimeMs:1,warnings:[]};}
  if(command==='index_status')return {state:'ready',noteCount:1};
+ if(command==='index_rebuild')return {jobId:'fixture-rebuild'};
+ if(command==='search'){if(window.__searchDelay)await new Promise(r=>window.__releaseSearch=r);if(window.__searchError)throw {message:'查询语法错误（E_QUERY_SYNTAX）'};return {items:[{path:p.cursor?'B.md':'A.md',title:p.cursor?'第二条':'当前笔记',snippet:'安全摘要 <b>当前</b>内容 &lt;script&gt;'}],nextCursor:p.cursor?null:'next-page',totalApprox:2,degraded:true,degradeReason:'index_rebuilding'};}
  if(command==='link_backlinks'||command==='link_mentions')return {items:[]};
  if(command==='export_note'){if(p.preview){if(window.__previewDelay)await new Promise(r=>window.__releasePreview=r);if(window.__previewError)throw {message:'渲染服务暂不可用'};return {html:'<!doctype html><h1>'+p.body.replaceAll('<','&lt;')+'</h1>',missingAssets:window.__previewMissing??[],warnings:[]};}return {filePath:p.targetPath,missingAssets:['missing.png'],warnings:[{kind:'unresolved_link',target:'Missing'}]};}
  if(command==='backup_create')return p.scope==='note'?{snapshotCreated:true}:{filePath:'/fixture/backup.zip',bytes:100,checksum:'fixture'};
@@ -30,6 +32,32 @@ test('选择文件夹后自动填入并打开所选中文路径',async({page})=>
  await dataBridge(page);await page.evaluate(()=>{(window as any).__folderChoice='/fixture/手动选择的笔记库';});await page.locator('#open').click();
  await expect(page.locator('#status')).toHaveText('笔记库已打开');await expect(page.locator('#vaultPath')).toHaveValue('/fixture/手动选择的笔记库');
  const calls=await page.evaluate(()=>(window as any).__dataCalls);expect(calls.findLast((c:any)=>c.command==='vault_open').p.path).toBe('/fixture/手动选择的笔记库');
+});
+test('搜索弹窗保留全部筛选排序、摘要与分页，点击结果打开笔记并保留条件',async({page},testInfo)=>{
+ await dataBridge(page);await page.locator('#sidebarTools').getByRole('button',{name:'搜索笔记…',exact:true}).click();await expect(page.locator('#searchQuery')).toBeFocused();
+ await page.locator('#searchQuery').fill('当前');await page.locator('#searchPath').fill('课程/');await page.locator('#searchTag').fill('标签一，标签二');await page.locator('#searchSort').selectOption('mtime');await page.locator('#searchButton').click();
+ await expect(page.locator('#searchInfo')).toContainText('索引重建中');await expect(page.locator('#searchResults mark')).toHaveText('当前');await expect(page.locator('#searchResults script')).toHaveCount(0);
+ await page.locator('#searchMore').click();await expect(page.locator('#searchResults button')).toHaveCount(2);await expect(page.locator('#searchMore')).toBeHidden();
+ const calls=await page.evaluate(()=>(window as any).__dataCalls.filter((c:any)=>c.command==='search'));
+ expect(calls[0].p).toEqual({query:'当前',sort:'mtime',filters:{pathPrefix:'课程/',tags:['标签一','标签二']},limit:50,cursor:null});expect(calls[1].p.cursor).toBe('next-page');expect(calls[1].p.filters).toEqual(calls[0].p.filters);
+ await page.screenshot({path:testInfo.outputPath('search-dialog-light.png')});
+ await page.evaluate(()=>{document.documentElement.dataset.theme='dark';});await page.screenshot({path:testInfo.outputPath('search-dialog-dark.png')});await page.evaluate(()=>{document.documentElement.dataset.theme='light';});
+ await page.locator('#searchResults button').first().click();await expect(page.locator('#searchDialog')).toBeHidden();await expect(page.locator('#path')).toHaveText('A.md');
+ await page.locator('#openSearch').click();await expect(page.locator('#searchQuery')).toHaveValue('当前');await expect(page.locator('#searchSort')).toHaveValue('mtime');await expect(page.locator('#searchResults button')).toHaveCount(2);await page.keyboard.press('Escape');await expect(page.locator('#searchDialog')).toBeHidden();
+});
+test('搜索错误就地显示，修改条件使旧分页失效，可重建索引并取消',async({page})=>{
+ await dataBridge(page);await page.locator('#openSearch').click();await page.evaluate(()=>{(window as any).__searchError=true;});await page.locator('#searchQuery').fill('bad:');await page.locator('#searchQuery').press('Enter');
+ await expect(page.locator('#searchError')).toContainText('E_QUERY_SYNTAX');await expect(page.locator('#searchQuery')).toHaveAttribute('aria-invalid','true');
+ await page.evaluate(()=>{(window as any).__searchError=false;});await page.locator('#searchQuery').fill('当前');await page.locator('#searchButton').click();await expect(page.locator('#searchMore')).toBeVisible();
+ await page.locator('#searchPath').fill('另一个目录/');await expect(page.locator('#searchMore')).toBeHidden();await expect(page.locator('#searchInfo')).toContainText('条件已更改');
+ await page.locator('#rebuild').click();await expect(page.locator('#searchIndexStatus')).toContainText('fixture-rebuild');await page.locator('#searchClose').click();await expect(page.locator('.cm-content')).toContainText('当前内容');
+});
+test('取消在途搜索不会重新弹出窗口，窄窗口仍可使用并显示结果',async({page},testInfo)=>{
+ await page.setViewportSize({width:800,height:650});await dataBridge(page);await page.locator('#openSearch').click();await page.evaluate(()=>{(window as any).__searchDelay=true;});
+ await page.locator('#searchQuery').fill('当前');await page.locator('#searchButton').click();await expect.poll(()=>page.evaluate(()=>typeof (window as any).__releaseSearch)).toBe('function');await page.locator('#searchClose').click();await expect(page.locator('#searchDialog')).toBeHidden();
+ await page.evaluate(()=>(window as any).__releaseSearch());await expect(page.locator('#openSearch')).toBeEnabled();await expect(page.locator('#searchDialog')).toBeHidden();await page.locator('#openSearch').click();await expect(page.locator('#searchResults button')).toHaveCount(1);
+ const box=(await page.locator('#searchDialog').boundingBox())!;expect(box.x).toBeGreaterThanOrEqual(0);expect(box.y).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(800);expect(box.y+box.height).toBeLessThanOrEqual(650);
+ await page.screenshot({path:testInfo.outputPath('search-dialog-narrow.png')});await page.locator('#searchClose').click();
 });
 test('应用输入提交期间禁用重复确定与取消，笔记快照允许空说明',async({page})=>{
  await dataBridge(page);await page.evaluate(()=>{(window as any).__delayCreate=true;});await page.locator('#new').click();await page.locator('#inputDialogValue').fill('Pending');await page.locator('#inputDialogConfirm').click();

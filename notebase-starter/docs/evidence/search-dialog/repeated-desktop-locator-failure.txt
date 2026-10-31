@@ -1,0 +1,156 @@
+
+> notebase-starter@0.7.0 test:desktop
+> playwright test --config playwright.desktop.config.ts
+
+
+Running 23 tests using 1 worker
+
+(node:38772) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  1 tests\desktop\storage.spec.ts:78:1 › 真实桌面已注册原生文件夹选择插件且具有打开权限 (1.2s)
+  x   2 tests\desktop\storage.spec.ts:86:1 › 真实桌面搜索中文并打开命中笔记 (2.7s)
+(node:42864) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  3 tests\desktop\storage.spec.ts:98:1 › 真实桌面默认Markdown预览支持表格代码任务图片且实时更新 (2.0s)
+  ok  4 tests\desktop\storage.spec.ts:125:1 › 真实桌面列出无权限的子目录并可重新选择可读笔记库 (1.5s)
+  ok  5 tests\desktop\storage.spec.ts:152:1 › 真实桌面读取 BOM 文件 保存并重新打开 (1.9s)
+  ok  6 tests\desktop\storage.spec.ts:170:1 › 真实桌面新建保留名 自动修正且不覆盖同名文件 (1.7s)
+  ok  7 tests\desktop\storage.spec.ts:183:1 › 真实桌面非法编码与超大文件只读预览 (7.7s)
+  ok  8 tests\desktop\storage.spec.ts:201:1 › 真实桌面拒绝覆盖外部修改 (1.9s)
+  x   9 tests\desktop\storage.spec.ts:216:1 › 真实桌面在库外构建索引 保存后自动更新并可检索 (3.4s)
+(node:42860) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 10 tests\desktop\storage.spec.ts:241:1 › 真实桌面切换库后索引状态与数据相互隔离 (4.7s)
+  x  11 tests\desktop\storage.spec.ts:251:1 › 真实桌面外部文件变化自动进入搜索和文件列表 (3.7s)
+(node:45028) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  12 tests\desktop\storage.spec.ts:261:1 › 真实桌面后台重建保留快照索引并恢复搜索 (2.5s)
+(node:29820) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  13 tests\desktop\storage.spec.ts:274:1 › 真实桌面迁移校验文件并保留原目录 (3.7s)
+(node:42160) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 14 tests\desktop\storage.spec.ts:293:1 › 成员二真实桌面自动保存 属性与回收站恢复 (4.9s)
+  ok 15 tests\desktop\storage.spec.ts:303:1 › 成员二真实IPC持久草稿刷新恢复 双链重命名和图数据 (2.1s)
+  ok 16 tests\desktop\storage.spec.ts:314:1 › 成员二真实窗口关闭会先冲刷未保存内容 (1.7s)
+  ok 17 tests\desktop\storage.spec.ts:321:1 › 成员四自动保存后无需重开库即可检索，日志不包含笔记正文 (4.6s)
+  ok 18 tests\desktop\storage.spec.ts:330:1 › 成员四桌面设置落盘，冲突快捷键保持旧配置 (1.9s)
+  ok 19 tests\desktop\storage.spec.ts:336:1 › 成员四第二窗口读写共享库且禁止切库，两个窗口内容不互相覆盖 (2.4s)
+  ok 20 tests\desktop\storage.spec.ts:350:1 › 全员界面原位恢复不会将恢复前编辑内容再次保存回文件 (2.1s)
+  ok 21 tests\desktop\storage.spec.ts:361:1 › 成员三真实IPC导出 快照 备份校验与新位置恢复 (2.9s)
+  ok 22 tests\desktop\storage.spec.ts:373:1 › 真实exe重命名保留历史且旧路径新建不串版本 (1.9s)
+  ok 23 tests\desktop\storage.spec.ts:385:1 › 真实exe版本保留设置可关闭且保存结果不伪报快照 (1.7s)
+
+
+  1) tests\desktop\storage.spec.ts:86:1 › 真实桌面搜索中文并打开命中笔记 ──────────────────────────────────────────
+
+    Error: locator.fill: Error: strict mode violation: getByLabel('搜索笔记', { exact: true }) resolved to 2 elements:
+        1) <dialog open="" id="searchDialog" aria-labelledby="searchTitle">…</dialog> aka getByRole('dialog', { name: '搜索笔记' })
+        2) <input id="searchQuery" aria-label="搜索笔记" autocomplete="off" aria-describedby="searchError" placeholder="关键词、title:标题、tag:标签"/> aka getByRole('textbox', { name: '搜索笔记' })
+
+    Call log:
+      - waiting for getByLabel('搜索笔记', { exact: true })
+
+
+      88 |  await expect(page.locator('#indexStatus')).toContainText('索引已就绪');
+      89 |  await page.locator('#sidebarTools>summary').click();await expect(page.locator('#searchQuery')).toBeHidden();await page.keyboard.press('Control+Shift+f');await expect(page.locator('#searchQuery')).toBeFocused();
+    > 90 |  await openSearch(page);await page.getByLabel('搜索笔记',{exact:true}).fill('态规划');await page.getByRole('button',{name:'搜索',exact:true}).click();
+         |                                                                    ^
+      91 |  await expect(page.locator('#searchInfo')).toContainText('1 条结果');await page.screenshot({path:testInfo.outputPath('search-dialog.png'),fullPage:true});await page.locator('#searchResults button').click();await expect(page.locator('#searchDialog')).not.toBeVisible();await expect(page.locator('#path')).toHaveText('搜索.md');
+      92 |  await openSearch(page);await page.getByLabel('搜索笔记',{exact:true}).fill('动态');await page.getByRole('button',{name:'搜索',exact:true}).click();await expect(page.locator('#searchInfo')).toContainText('短查询扫描');
+      93 |  await openSearch(page);await page.getByLabel('搜索笔记',{exact:true}).fill('不存在');await page.getByRole('button',{name:'搜索',exact:true}).click();await expect(page.locator('#searchInfo')).toContainText('0 条结果');
+        at D:\NoteBase\repository\notebase-starter\tests\desktop\storage.spec.ts:90:68
+
+    Error Context: test-results\desktop\storage-真实桌面搜索中文并打开命中笔记\error-context.md
+
+  2) tests\desktop\storage.spec.ts:216:1 › 真实桌面在库外构建索引 保存后自动更新并可检索 ─────────────────────────────────
+
+    Error: locator.fill: Error: strict mode violation: getByLabel('搜索笔记', { exact: true }) resolved to 2 elements:
+        1) <dialog open="" id="searchDialog" aria-labelledby="searchTitle">…</dialog> aka getByRole('dialog', { name: '搜索笔记' })
+        2) <input id="searchQuery" aria-label="搜索笔记" autocomplete="off" aria-describedby="searchError" placeholder="关键词、title:标题、tag:标签"/> aka getByRole('textbox', { name: '搜索笔记' })
+
+    Call log:
+      - waiting for getByLabel('搜索笔记', { exact: true })
+
+
+      235 |     await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 1 篇');
+      236 |     expect(db.prepare("SELECT count(*) AS n FROM note_fts WHERE note_fts MATCH '后的新'").get()?.n).toBe(1);
+    > 237 |     await openSearch(page);await page.getByLabel('搜索笔记',{exact:true}).fill('后的新');await page.getByRole('button',{name:'搜索',exact:true}).click();await expect(page.locator('#searchInfo')).toContainText('1 条结果');
+          |                                                                       ^
+      238 |   }finally{db.close();}
+      239 | });
+      240 |
+        at D:\NoteBase\repository\notebase-starter\tests\desktop\storage.spec.ts:237:71
+
+    Error Context: test-results\desktop\storage-真实桌面在库外构建索引-保存后自动更新并可检索\error-context.md
+
+  3) tests\desktop\storage.spec.ts:251:1 › 真实桌面外部文件变化自动进入搜索和文件列表 ───────────────────────────────────
+
+    Error: locator.fill: Error: strict mode violation: getByLabel('搜索笔记', { exact: true }) resolved to 2 elements:
+        1) <dialog open="" id="searchDialog" aria-labelledby="searchTitle">…</dialog> aka getByRole('dialog', { name: '搜索笔记' })
+        2) <input id="searchQuery" aria-label="搜索笔记" autocomplete="off" aria-describedby="searchError" placeholder="关键词、title:标题、tag:标签"/> aka getByRole('textbox', { name: '搜索笔记' })
+
+    Call log:
+      - waiting for getByLabel('搜索笔记', { exact: true })
+
+
+      253 |  await writeFile(resolve(vault,'外部.md'),'外部创建可检索');
+      254 |  await expect(page.locator('#notes')).toContainText('外部.md');await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 1 篇');
+    > 255 |  await openSearch(page);await page.getByLabel('搜索笔记',{exact:true}).fill('外部创建');await page.getByRole('button',{name:'搜索',exact:true}).click();await expect(page.locator('#searchInfo')).toContainText('1 条结果');
+          |                                                                    ^
+      256 |  await page.locator('#notes button').click();await page.locator('.cm-content').click();await page.keyboard.press('Control+End');await page.keyboard.insertText(' 本地未保存');
+      257 |  await writeFile(resolve(vault,'外部.md'),'外部第二次改写');
+      258 |  await expect(page.locator('#externalNotice')).toContainText('磁盘内容已修改');await expect(page.locator('.cm-content')).toContainText('本地未保存');await expect(page.locator('#dirty')).toContainText('冲突暂停');expect(await readFile(resolve(vault,'外部.md'),'utf8')).toBe('外部第二次改写');
+        at D:\NoteBase\repository\notebase-starter\tests\desktop\storage.spec.ts:255:68
+
+    Error Context: test-results\desktop\storage-真实桌面外部文件变化自动进入搜索和文件列表\error-context.md
+
+  4) tests\desktop\storage.spec.ts:261:1 › 真实桌面后台重建保留快照索引并恢复搜索 ─────────────────────────────────────
+
+    Error: locator.fill: Error: strict mode violation: getByLabel('搜索笔记', { exact: true }) resolved to 2 elements:
+        1) <dialog open="" id="searchDialog" aria-labelledby="searchTitle">…</dialog> aka getByRole('dialog', { name: '搜索笔记' })
+        2) <input id="searchQuery" aria-label="搜索笔记" autocomplete="off" aria-describedby="searchError" placeholder="关键词、title:标题、tag:标签"/> aka getByRole('textbox', { name: '搜索笔记' })
+
+    Call log:
+      - waiting for getByLabel('搜索笔记', { exact: true })
+
+
+      268 |   await expect.poll(()=>db.prepare("SELECT value FROM meta WHERE key='last_full_build_ms'").get()?.value).not.toBe(before);
+      269 |   await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 1 篇');expect(db.prepare('SELECT count(*) AS n FROM snapshot_index').get()?.n).toBe(1);
+    > 270 |   await openSearch(page);await page.getByLabel('搜索笔记',{exact:true}).fill('后台重建');await page.getByRole('button',{name:'搜索',exact:true}).click();await expect(page.locator('#searchInfo')).toContainText('1 条结果');
+          |                                                                     ^
+      271 |  }finally{db.close();}
+      272 | });
+      273 |
+        at D:\NoteBase\repository\notebase-starter\tests\desktop\storage.spec.ts:270:69
+
+    Error Context: test-results\desktop\storage-真实桌面后台重建保留快照索引并恢复搜索\error-context.md
+
+  5) tests\desktop\storage.spec.ts:274:1 › 真实桌面迁移校验文件并保留原目录 ────────────────────────────────────────
+
+    Error: locator.fill: Error: strict mode violation: getByLabel('搜索笔记', { exact: true }) resolved to 2 elements:
+        1) <dialog open="" id="searchDialog" aria-labelledby="searchTitle">…</dialog> aka getByRole('dialog', { name: '搜索笔记' })
+        2) <input id="searchQuery" aria-label="搜索笔记" autocomplete="off" aria-describedby="searchError" placeholder="关键词、title:标题、tag:标签"/> aka getByRole('textbox', { name: '搜索笔记' })
+
+    Call log:
+      - waiting for getByLabel('搜索笔记', { exact: true })
+
+
+      283 |  await expect(page.locator('#vaultPath')).toHaveValue(/migrated-vault$/);await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 1 篇');
+      284 |  const settings=JSON.parse(await readFile(testInfo.outputPath('app-data','settings.json'),'utf8'));expect(settings.vaultPath).toMatch(/migrated-vault$/);
+    > 285 |  await openSearch(page);await page.getByLabel('搜索笔记',{exact:true}).fill('迁移后的');await page.getByRole('button',{name:'搜索',exact:true}).click();await expect(page.locator('#searchInfo')).toContainText('1 条结果');
+          |                                                                    ^
+      286 | });
+      287 | async function invokeCore(page:Page,command:string,payload:Record<string,unknown>={}) {
+      288 |   return page.evaluate(async({command,payload})=>{
+        at D:\NoteBase\repository\notebase-starter\tests\desktop\storage.spec.ts:285:68
+
+    Error Context: test-results\desktop\storage-真实桌面迁移校验文件并保留原目录\error-context.md
+
+  5 failed
+    tests\desktop\storage.spec.ts:86:1 › 真实桌面搜索中文并打开命中笔记 ───────────────────────────────────────────
+    tests\desktop\storage.spec.ts:216:1 › 真实桌面在库外构建索引 保存后自动更新并可检索 ──────────────────────────────────
+    tests\desktop\storage.spec.ts:251:1 › 真实桌面外部文件变化自动进入搜索和文件列表 ────────────────────────────────────
+    tests\desktop\storage.spec.ts:261:1 › 真实桌面后台重建保留快照索引并恢复搜索 ──────────────────────────────────────
+    tests\desktop\storage.spec.ts:274:1 › 真实桌面迁移校验文件并保留原目录 ─────────────────────────────────────────
+  18 passed (1.1m)

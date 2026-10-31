@@ -83,14 +83,16 @@ test('真实桌面已注册原生文件夹选择插件且具有打开权限',asy
  expect(error).toMatch(/invalid type.*expected.*boolean/i);
 });
 
-test('真实桌面搜索中文并打开命中笔记',async({desktopPage:page,vault})=>{
- await writeFile(resolve(vault,'搜索.md'),'# 数据结构\n跨词边界的动态规划内容');await openVault(page,vault);
+test('真实桌面搜索中文并打开命中笔记',async({desktopPage:page,vault},testInfo)=>{
+ await writeFile(resolve(vault,'搜索.md'),'# 数据结构\n跨词边界的动态规划内容');await mkdir(resolve(vault,'课程'));await writeFile(resolve(vault,'课程','过滤.md'),'---\ntags:\n  - 算法\n---\n# 筛选目标\n按路径和标签查找');await openVault(page,vault);
  await expect(page.locator('#indexStatus')).toContainText('索引已就绪');
  await page.locator('#sidebarTools>summary').click();await expect(page.locator('#searchQuery')).toBeHidden();await page.keyboard.press('Control+Shift+f');await expect(page.locator('#searchQuery')).toBeFocused();
- await page.getByLabel('搜索笔记',{exact:true}).fill('态规划');await page.getByRole('button',{name:'搜索',exact:true}).click();
- await expect(page.locator('#searchInfo')).toContainText('1 条结果');await page.locator('#searchResults button').click();await expect(page.locator('#path')).toHaveText('搜索.md');
- await page.getByLabel('搜索笔记',{exact:true}).fill('动态');await page.getByRole('button',{name:'搜索',exact:true}).click();await expect(page.locator('#searchInfo')).toContainText('短查询扫描');
- await page.getByLabel('搜索笔记',{exact:true}).fill('不存在');await page.getByRole('button',{name:'搜索',exact:true}).click();await expect(page.locator('#searchInfo')).toContainText('0 条结果');
+ await openSearch(page);await page.getByRole('textbox',{name:'搜索笔记',exact:true}).fill('态规划');await page.getByRole('button',{name:'搜索',exact:true}).click();
+ await expect(page.locator('#searchInfo')).toContainText('1 条结果');await page.screenshot({path:testInfo.outputPath('search-dialog.png'),fullPage:true});await page.locator('#searchResults button').click();await expect(page.locator('#searchDialog')).not.toBeVisible();await expect(page.locator('#path')).toHaveText('搜索.md');
+ await openSearch(page);await page.getByRole('textbox',{name:'搜索笔记',exact:true}).fill('动态');await page.getByRole('button',{name:'搜索',exact:true}).click();await expect(page.locator('#searchInfo')).toContainText('短查询扫描');
+ await openSearch(page);await page.getByRole('textbox',{name:'搜索笔记',exact:true}).fill('不存在');await page.getByRole('button',{name:'搜索',exact:true}).click();await expect(page.locator('#searchInfo')).toContainText('0 条结果');
+ await page.locator('#searchQuery').fill('筛选目标');await page.locator('#searchPath').fill('课程/');await page.locator('#searchTag').fill('算法');await page.locator('#searchSort').selectOption('mtime');await page.locator('#searchButton').click();await expect(page.locator('#searchInfo')).toContainText('1 条结果');await expect(page.locator('#searchResults')).toContainText('课程/过滤.md');
+ await page.screenshot({path:testInfo.outputPath('search-dialog-filtered.png'),fullPage:true});await page.locator('#searchResults button').click();await expect(page.locator('#path')).toHaveText('课程/过滤.md');await expect(page.locator('#searchDialog')).toBeHidden();
 });
 
 test('真实桌面默认Markdown预览支持表格代码任务图片且实时更新',async({desktopPage:page,vault})=>{
@@ -107,6 +109,11 @@ test('真实桌面默认Markdown预览支持表格代码任务图片且实时更
  await page.locator('#previewEdit').click();await expect(page.locator('#markdownPreview')).toBeHidden();await expect(page.locator('.cm-content')).toContainText('即时更新');
  await page.locator('#previewToggle').click();await expect(frame.locator('h2')).toHaveText('即时更新');
 });
+
+async function openSearch(page: Page) {
+  if (!await page.locator('#searchDialog').isVisible()) await page.keyboard.press('Control+Shift+f');
+  await expect(page.locator('#searchDialog')).toBeVisible();
+}
 
 async function openVault(page: Page, vault: string) {
   if(await page.locator('#sidebarTools').getAttribute('open')===null) await page.locator('#sidebarTools>summary').click();
@@ -227,7 +234,7 @@ test('真实桌面在库外构建索引 保存后自动更新并可检索', asyn
     await expect.poll(()=>db.prepare("SELECT count(*) AS n FROM note_fts WHERE note_fts MATCH '后的新'").get()?.n).toBe(1);
     await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 1 篇');
     expect(db.prepare("SELECT count(*) AS n FROM note_fts WHERE note_fts MATCH '后的新'").get()?.n).toBe(1);
-    await page.getByLabel('搜索笔记',{exact:true}).fill('后的新');await page.getByRole('button',{name:'搜索',exact:true}).click();await expect(page.locator('#searchInfo')).toContainText('1 条结果');
+    await openSearch(page);await page.getByRole('textbox',{name:'搜索笔记',exact:true}).fill('后的新');await page.getByRole('button',{name:'搜索',exact:true}).click();await expect(page.locator('#searchInfo')).toContainText('1 条结果');
   }finally{db.close();}
 });
 
@@ -245,8 +252,8 @@ test('真实桌面外部文件变化自动进入搜索和文件列表',async({de
  await openVault(page,vault);await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 0 篇');
  await writeFile(resolve(vault,'外部.md'),'外部创建可检索');
  await expect(page.locator('#notes')).toContainText('外部.md');await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 1 篇');
- await page.getByLabel('搜索笔记',{exact:true}).fill('外部创建');await page.getByRole('button',{name:'搜索',exact:true}).click();await expect(page.locator('#searchInfo')).toContainText('1 条结果');
- await page.locator('#notes button').click();await page.locator('.cm-content').click();await page.keyboard.press('Control+End');await page.keyboard.insertText(' 本地未保存');
+ await openSearch(page);await page.getByRole('textbox',{name:'搜索笔记',exact:true}).fill('外部创建');await page.getByRole('button',{name:'搜索',exact:true}).click();await expect(page.locator('#searchInfo')).toContainText('1 条结果');
+ await page.locator('#searchClose').click();await page.locator('#notes button').click();await page.locator('.cm-content').click();await page.keyboard.press('Control+End');await page.keyboard.insertText(' 本地未保存');
  await writeFile(resolve(vault,'外部.md'),'外部第二次改写');
  await expect(page.locator('#externalNotice')).toContainText('磁盘内容已修改');await expect(page.locator('.cm-content')).toContainText('本地未保存');await expect(page.locator('#dirty')).toContainText('冲突暂停');expect(await readFile(resolve(vault,'外部.md'),'utf8')).toBe('外部第二次改写');
 });
@@ -257,10 +264,10 @@ test('真实桌面后台重建保留快照索引并恢复搜索',async({desktopP
  try{
   db.prepare("INSERT INTO snapshot_index VALUES('A.md','v1','snapshots/a',1,1)").run();
   const before=db.prepare("SELECT value FROM meta WHERE key='last_full_build_ms'").get()?.value;
-  await page.getByRole('button',{name:'后台重建索引',exact:true}).click();await expect(page.locator('#status')).toContainText('已启动后台重建：rebuild-');
+  await openSearch(page);await page.getByRole('button',{name:'后台重建索引',exact:true}).click();await expect(page.locator('#status')).toContainText('已启动后台重建：rebuild-');
   await expect.poll(()=>db.prepare("SELECT value FROM meta WHERE key='last_full_build_ms'").get()?.value).not.toBe(before);
   await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 1 篇');expect(db.prepare('SELECT count(*) AS n FROM snapshot_index').get()?.n).toBe(1);
-  await page.getByLabel('搜索笔记',{exact:true}).fill('后台重建');await page.getByRole('button',{name:'搜索',exact:true}).click();await expect(page.locator('#searchInfo')).toContainText('1 条结果');
+  await openSearch(page);await page.getByRole('textbox',{name:'搜索笔记',exact:true}).fill('后台重建');await page.getByRole('button',{name:'搜索',exact:true}).click();await expect(page.locator('#searchInfo')).toContainText('1 条结果');
  }finally{db.close();}
 });
 
@@ -275,7 +282,7 @@ test('真实桌面迁移校验文件并保留原目录',async({desktopPage:page,
  expect(await readFile(resolve(vault,'迁移.md'),'utf8')).toBe('迁移后的检索内容');expect(await readFile(resolve(target,'迁移.md'),'utf8')).toBe('迁移后的检索内容');expect(await readFile(resolve(target,'attachments','image.bin'))).toEqual(await readFile(resolve(vault,'attachments','image.bin')));
  await expect(page.locator('#vaultPath')).toHaveValue(/migrated-vault$/);await expect(page.locator('#indexStatus')).toContainText('索引已就绪 · 1 篇');
  const settings=JSON.parse(await readFile(testInfo.outputPath('app-data','settings.json'),'utf8'));expect(settings.vaultPath).toMatch(/migrated-vault$/);
- await page.getByLabel('搜索笔记',{exact:true}).fill('迁移后的');await page.getByRole('button',{name:'搜索',exact:true}).click();await expect(page.locator('#searchInfo')).toContainText('1 条结果');
+ await openSearch(page);await page.getByRole('textbox',{name:'搜索笔记',exact:true}).fill('迁移后的');await page.getByRole('button',{name:'搜索',exact:true}).click();await expect(page.locator('#searchInfo')).toContainText('1 条结果');
 });
 async function invokeCore(page:Page,command:string,payload:Record<string,unknown>={}) {
   return page.evaluate(async({command,payload})=>{
@@ -315,7 +322,7 @@ test('成员四自动保存后无需重开库即可检索，日志不包含笔�
  const target=resolve(vault,'Flow.md');await writeFile(target,'initial');await openVault(page,vault);await page.getByRole('button',{name:'Flow.md',exact:true}).click();
  await page.locator('.cm-content').click();await page.keyboard.press('Control+End');await page.keyboard.insertText(' 成员四秘密正文');
  await expect.poll(()=>readFile(target,'utf8')).toContain('成员四秘密正文');await expect(page.locator('#dirty')).toHaveText('已保存');await expect(page.locator('#indexStatus')).toContainText('索引已就绪');
- await page.locator('#searchQuery').fill('成员四秘密');await page.locator('#searchButton').click();await expect(page.locator('#searchInfo')).toContainText('1 条结果');
+ await openSearch(page);await page.locator('#searchQuery').fill('成员四秘密');await page.locator('#searchButton').click();await expect(page.locator('#searchInfo')).toContainText('1 条结果');
  const folder=testInfo.outputPath('app-data','logs');const logs=(await Promise.all((await readdir(folder)).map(name=>readFile(resolve(folder,name),'utf8')))).join('\n');
  expect(logs).toContain('note_save');expect(logs).not.toContain('秘密正文');expect(logs).not.toContain(vault);
 });

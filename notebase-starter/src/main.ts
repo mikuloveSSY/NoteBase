@@ -18,7 +18,7 @@ import { inputDialog, requiredText, absoluteDirectory } from './input-dialog';
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = [
   '<aside class="library-sidebar"><div class="brand"><b>N</b><div>NoteBase<small>本地优先 · Markdown</small></div></div><button id="open" class="primary">选择笔记库文件夹…</button>',
   '<details id="sidebarTools" class="sidebar-tools"><summary>笔记库工具</summary><div class="sidebar-tools-content"><label class="field">笔记库路径<input id="vaultPath" placeholder="选择文件夹后自动填入" aria-label="笔记库绝对路径"></label><button id="openPath">按路径打开</button>',
-  '<label class="field">搜索笔记<input id="searchQuery" aria-label="搜索笔记" placeholder="关键词、title:标题、tag:标签"></label><div class="compact-actions"><button id="searchButton">搜索</button><button id="rebuild">后台重建索引</button></div><details><summary>搜索筛选</summary><label class="field">路径前缀<input id="searchPath"></label><label class="field">标签<input id="searchTag"></label><label class="field">排序<select id="searchSort"><option value="relevance">相关性</option><option value="mtime">最近修改</option></select></label></details><div id="searchInfo" role="status" aria-live="polite"></div><nav id="searchResults" aria-label="搜索结果"></nav><button id="searchMore" hidden>更多搜索结果</button><button id="migrate">迁移笔记库目录</button><p id="indexWarning" role="alert" hidden></p>',
+  '<button id="openSearch" type="button">搜索笔记…</button><button id="migrate">迁移笔记库目录</button>',
   '<div class="section-title">笔记 <button id="new" aria-label="新建笔记">＋ 新建</button></div>',
   '<details class="new-options"><summary>新建目录与模板</summary><label class="field">目录<input id="newDir" placeholder="留空为根目录"></label><label class="field">模板<select id="template"><option value="">空白笔记</option></select></label><small id="templateStatus"></small></details>',
   '<label class="check"><input type="checkbox" id="favoriteFilter">仅收藏</label><label class="check"><input type="checkbox" id="groupTree" checked>按目录分组</label></div></details>',
@@ -41,6 +41,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = [
   '<dialog id="conflictDialog" aria-labelledby="conflictTitle"><h2 id="conflictTitle">外部修改冲突</h2><p id="conflictMessage"></p><p>自动保存已暂停。本地文本保留，请明确选择一种处理方式。</p><div class="dialog-actions"><button data-choice="local">保留本地并覆盖</button><button data-choice="disk">使用磁盘内容</button><button data-choice="copy">另存冲突副本</button></div><button id="conflictLater">稍后处理（保持暂停）</button></dialog>',
   '<dialog id="renameDialog" aria-labelledby="renameTitle"><h2 id="renameTitle">确认重命名与链接更新</h2><div id="renameDetails"></div><div class="dialog-actions"><button id="renameConfirm" class="primary">确认执行</button><button id="renameCancel">取消</button></div></dialog>',
   '<dialog id="targetDialog" aria-labelledby="targetTitle"><h2 id="targetTitle">选择链接目标</h2><div id="targetCandidates"></div><button id="targetClose">关闭</button></dialog>',
+  '<dialog id="searchDialog" aria-labelledby="searchTitle"><form id="searchForm" novalidate><div class="search-controls"><h2 id="searchTitle">搜索笔记</h2><p class="muted">支持关键词、title:标题、tag:标签等查询。点击确定搜索，点击结果打开笔记。</p><label class="field">搜索笔记<input id="searchQuery" aria-label="搜索笔记" aria-describedby="searchError" placeholder="关键词、title:标题、tag:标签" autocomplete="off"></label><p id="searchError" class="field-error" role="alert" hidden></p><fieldset class="search-filters"><legend>搜索筛选</legend><label class="field">路径前缀<input id="searchPath" placeholder="如 课程/"></label><label class="field">标签<input id="searchTag" placeholder="多个标签用逗号分隔"></label><label class="field">排序<select id="searchSort"><option value="relevance">相关性</option><option value="mtime">最近修改</option></select></label></fieldset><div class="search-index-tools"><span id="searchIndexStatus" class="muted"></span><button id="rebuild" type="button">后台重建索引</button></div><p id="indexWarning" role="alert" hidden></p></div><div id="searchInfo" role="status" aria-live="polite"></div><nav id="searchResults" aria-label="搜索结果"><p class="muted">输入关键词或设置筛选条件，然后点击确定搜索。</p></nav><button id="searchMore" type="button" hidden>更多搜索结果</button><div class="dialog-actions search-dialog-footer"><button id="searchClose" type="button">取消</button><button id="searchButton" type="submit" class="primary" aria-label="搜索">确定</button></div></form></dialog>',
 ].join('');
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const sidebarTools = $<HTMLDetailsElement>('sidebarTools');
@@ -51,7 +52,7 @@ sidebarTools.addEventListener('toggle', () => {
 let active: NoteContent | null = null, busy = false, opened = false, loading = false, switching = false, bootReady = false;
 let nextCursor: string | null = null, entries: NoteEntry[] = [];
 let vaultGeneration = 0, externalTreeDirty = false;
-let searchCursor: string | null = null, searchText = '';
+let searchCursor: string | null = null, searchRequest: Record<string, unknown> | null = null;
 const staleVault = new Error('笔记库已切换，忽略旧请求结果。');
 const tabs = new Set<string>();
 let lastSave: SaveResult | null = null, lastError: unknown = null, conflictKey = '', lastFrontmatter: unknown = null;
@@ -83,8 +84,9 @@ function update() {
   $<HTMLButtonElement>('open').disabled = busy || !bootReady;
   $<HTMLButtonElement>('openPath').disabled = busy || !bootReady || !desktopMode;
   $<HTMLInputElement>('vaultPath').disabled = busy || !desktopMode || !bootReady;
-  for (const id of ['rebuild', 'migrate', 'searchButton', 'searchMore']) $<HTMLButtonElement>(id).disabled = busy || !opened || !desktopMode;
-  $<HTMLInputElement>('searchQuery').disabled = !opened || busy || !desktopMode;
+  for (const id of ['openSearch', 'rebuild', 'migrate', 'searchButton', 'searchMore']) $<HTMLButtonElement>(id).disabled = busy || !opened || !desktopMode;
+  for (const id of ['searchQuery', 'searchPath', 'searchTag', 'searchSort']) $<HTMLInputElement>(id).disabled = !opened || busy || !desktopMode;
+  $('searchResults').querySelectorAll<HTMLButtonElement>('button').forEach(button => { button.disabled = busy; });
   for (const id of ['rename', 'delete', 'propertiesSave']) $<HTMLButtonElement>(id).disabled = !active || busy || s.saving || s.paused || active.readOnly || (id === 'propertiesSave' && !!active.frontmatterError);
   $<HTMLInputElement>('attachment').disabled = !active || active.readOnly || switching;
   $('showConflict').hidden = !s.conflict;
@@ -166,9 +168,10 @@ async function read(path: string) {
 }
 function resetVaultView() {
   vaultGeneration++; opened = false; externalTreeDirty = false;
-  nextCursor = searchCursor = null; searchText = ''; entries = [];
+  nextCursor = searchCursor = null; searchRequest = null; entries = [];
   tabs.clear(); renderTabs(); $('notes').replaceChildren(); $('more').hidden = true;
   $('searchResults').replaceChildren(); $('searchInfo').textContent = ''; $('searchMore').hidden = true;
+  $<HTMLDialogElement>('searchDialog').close(); searchWarning('');
   $<HTMLInputElement>('searchQuery').value = '';
   pendingRename = null; graphData = null; graphZoom = 1; lastSave = null; lastError = null;
   for (const id of ['renameDialog', 'targetDialog']) $<HTMLDialogElement>(id).close();
@@ -438,35 +441,69 @@ function locateSearchResult(item: SearchHit) {
   const to = Math.min(body.length, from + (firstMatch?.text.length ?? 0));
   view.dispatch({ selection: { anchor: from, head: to }, effects: EditorView.scrollIntoView(from, { y: 'center' }) }); view.focus();
 }
+function searchWarning(text: string) {
+  $('searchError').textContent = text; $('searchError').hidden = !text;
+  if (text) $('searchQuery').setAttribute('aria-invalid', 'true'); else $('searchQuery').removeAttribute('aria-invalid');
+}
+function openSearch() {
+  if (!desktopMode || !opened || busy) return;
+  const dialog = $<HTMLDialogElement>('searchDialog');
+  $('searchIndexStatus').textContent = $('indexStatus').textContent;
+  if (!dialog.open) dialog.showModal();
+  $('searchQuery').focus(); $<HTMLInputElement>('searchQuery').select();
+}
 async function searchNotes(more = false) {
+  const focusedQuery = document.activeElement === $('searchQuery');
   await run(async () => {
     if (!desktopMode || !opened) throw new Error('全文检索需要打开桌面文件库');
-    if (more && !searchCursor) return;
-    const generation = vaultGeneration, query = more ? searchText : $<HTMLInputElement>('searchQuery').value;
-    const result = await vaultCall<SearchPage>('search', { query, limit: 50, sort: $<HTMLSelectElement>('searchSort').value, cursor: more ? searchCursor : null, filters: { pathPrefix: $<HTMLInputElement>('searchPath').value || undefined, tags: $<HTMLInputElement>('searchTag').value.split(/[,，]/).map(s => s.trim()).filter(Boolean) } });
-    if (!more) $('searchResults').replaceChildren();
-    for (const item of result.items) {
-      const b = button('', () => void run(async () => {
-        if (generation !== vaultGeneration) return;
-        await read(item.path);
-        if (generation === vaultGeneration && active?.path === item.path && !session.state.paused) locateSearchResult(item);
-      }));
-      b.className = 'note'; b.dataset.path = item.path;
-      const label = document.createElement('span'); label.textContent = item.title + ' · ' + item.path;
-      const snippet = document.createElement('small'); snippet.className = 'muted'; snippet.style.display = 'block';
-      for (const part of snippetParts(item.snippet)) {
-        if (part.matched) { const mark = document.createElement('mark'); mark.textContent = part.text; snippet.append(mark); }
-        else snippet.append(document.createTextNode(part.text));
+    if (more && (!searchCursor || !searchRequest)) return;
+    const generation = vaultGeneration;
+    const request = more ? searchRequest! : { query: $<HTMLInputElement>('searchQuery').value, sort: $<HTMLSelectElement>('searchSort').value, filters: { pathPrefix: $<HTMLInputElement>('searchPath').value || undefined, tags: $<HTMLInputElement>('searchTag').value.split(/[,，]/).map(s => s.trim()).filter(Boolean) } };
+    searchWarning(''); $('searchInfo').textContent = more ? '正在加载更多结果…' : '正在搜索…';
+    try {
+      const result = await vaultCall<SearchPage>('search', { ...request, limit: 50, cursor: more ? searchCursor : null });
+      if (!more) $('searchResults').replaceChildren();
+      for (const item of result.items) {
+        const b = button('', () => void run(async () => {
+          if (generation !== vaultGeneration) return;
+          try {
+            await read(item.path);
+            if (generation === vaultGeneration && active?.path === item.path && !session.state.paused) {
+              $<HTMLDialogElement>('searchDialog').close(); locateSearchResult(item);
+            }
+          } catch (error) { if (generation === vaultGeneration) searchWarning('无法打开搜索结果：' + message(error)); throw error; }
+        }));
+        b.type = 'button'; b.className = 'note'; b.dataset.path = item.path;
+        const label = document.createElement('span'); label.textContent = item.title + ' · ' + item.path;
+        const snippet = document.createElement('small'); snippet.className = 'muted'; snippet.style.display = 'block';
+        for (const part of snippetParts(item.snippet)) {
+          if (part.matched) { const mark = document.createElement('mark'); mark.textContent = part.text; snippet.append(mark); }
+          else snippet.append(document.createTextNode(part.text));
+        }
+        b.title = snippet.textContent ?? ''; b.append(label, snippet); $('searchResults').append(b);
       }
-      b.title = snippet.textContent ?? ''; b.append(label, snippet); $('searchResults').append(b);
+      if (!result.items.length && !more) { const empty = document.createElement('p'); empty.className = 'muted'; empty.textContent = '没有找到匹配笔记，请调整关键词或筛选条件。'; $('searchResults').append(empty); }
+      searchRequest = request; searchCursor = result.nextCursor; $('searchMore').hidden = !searchCursor;
+      $('searchInfo').textContent = result.totalApprox + ' 条结果' + (result.degraded ? result.degradeReason?.startsWith('index_rebuilding') ? ' · 索引重建中，结果可能不完整' : ' · 短查询扫描' : '');
+    } catch (error) {
+      if (generation === vaultGeneration) { searchCursor = null; $('searchMore').hidden = true; searchWarning(message(error)); $('searchInfo').textContent = '搜索未完成，请修改条件或重试。'; }
+      throw error;
     }
-    searchText = query; searchCursor = result.nextCursor; $('searchMore').hidden = !searchCursor;
-    $('searchInfo').textContent = result.totalApprox + ' 条结果' + (result.degraded ? result.degradeReason?.startsWith('index_rebuilding') ? ' · 索引重建中，结果可能不完整' : ' · 短查询扫描' : '');
   });
+  if (focusedQuery && !busy && $<HTMLDialogElement>('searchDialog').open) $('searchQuery').focus();
 }
-$('searchButton').addEventListener('click', () => void searchNotes()); $('searchMore').addEventListener('click', () => void searchNotes(true));
-$('searchQuery').addEventListener('keydown', event => { if (event.key === 'Enter') void searchNotes(); });
-$('rebuild').addEventListener('click', () => void run(async () => { const result = await vaultCall<IndexRebuildResult>('index_rebuild', { mode: 'full' }); status('已启动后台重建：' + result.jobId); }));
+$('openSearch').addEventListener('click', openSearch);
+$('searchClose').addEventListener('click', () => $<HTMLDialogElement>('searchDialog').close());
+$('searchForm').addEventListener('submit', event => { event.preventDefault(); void searchNotes(); });
+$('searchMore').addEventListener('click', () => void searchNotes(true));
+for (const id of ['searchQuery', 'searchPath', 'searchTag', 'searchSort']) $(id).addEventListener('input', () => {
+  searchWarning(''); searchCursor = null; searchRequest = null; $('searchMore').hidden = true;
+  if ($('searchResults').querySelector('button')) $('searchInfo').textContent = '条件已更改，点击确定重新搜索。';
+});
+$('rebuild').addEventListener('click', () => void run(async () => {
+  try { const result = await vaultCall<IndexRebuildResult>('index_rebuild', { mode: 'full' }); const text = '已启动后台重建：' + result.jobId; status(text); $('searchIndexStatus').textContent = text; }
+  catch (error) { searchWarning(message(error)); throw error; }
+}));
 $('migrate').addEventListener('click', () => void run(migrate));
 if (desktopMode) {
   void import('@tauri-apps/api/event').then(async ({ listen }) => {
@@ -488,8 +525,8 @@ async function pollIndex() {
   if (opened && !switching) {
     try {
       const value = await vaultCall<IndexStatus>('index_status', {}), labels = { ready: '索引已就绪', rebuilding: '正在构建索引', offline: '索引需刷新或存在不可索引文件', unavailable: '索引不可用' };
-      if (generation === vaultGeneration) $('indexStatus').textContent = labels[value.state] + ' · ' + value.noteCount + ' 篇' + (value.noteCount >= 100000 ? ' · 大库模式：短词检索可能需要更长时间' : '') + (value.progress ? ' · ' + value.progress.done + '/' + value.progress.total : '');
-    } catch (error) { if (generation === vaultGeneration && error !== staleVault) $('indexStatus').textContent = '索引不可用：' + message(error); }
+      if (generation === vaultGeneration) { const text = labels[value.state] + ' · ' + value.noteCount + ' 篇' + (value.noteCount >= 100000 ? ' · 大库模式：短词检索可能需要更长时间' : '') + (value.progress ? ' · ' + value.progress.done + '/' + value.progress.total : ''); $('indexStatus').textContent = $('searchIndexStatus').textContent = text; }
+    } catch (error) { if (generation === vaultGeneration && error !== staleVault) $('indexStatus').textContent = $('searchIndexStatus').textContent = '索引不可用：' + message(error); }
     if (generation === vaultGeneration && externalTreeDirty && !busy) {
       externalTreeDirty = false;
       await run(async () => { try { await list(); } catch (error) { externalTreeDirty = true; throw error; } });
@@ -522,9 +559,9 @@ function applyEditorPreferences(value: Preferences) {
 }
 async function boot() {
   if (desktopMode) { const { getCurrentWindow } = await import('@tauri-apps/api/window'); windowLabel = getCurrentWindow().label; }
-  const clickAction = (id: string, label: string) => ({ id, label, run: () => $(id).click(), available: () => !($<HTMLButtonElement>(id).disabled) });
+  const clickAction = (id: string, label: string) => ({ id, label, run: () => { if (id === 'rebuild') openSearch(); $(id).click(); }, available: () => !($<HTMLButtonElement>(id).disabled) });
   await mountShell([
-    clickAction('new', '新建笔记'), { id: 'search', label: '搜索笔记', run: () => { sidebarTools.open = true; $('searchQuery').focus(); } },
+    clickAction('new', '新建笔记'), { id: 'search', label: '搜索笔记', run: openSearch, available: () => desktopMode && opened && !busy },
     { id: 'save', label: '保存当前笔记', run: save, available: () => !!active && !active.readOnly },
     { id: 'nextTab', label: '切换到下一标签页', run: () => run(async () => { const paths = [...tabs]; if (paths.length) await read(paths[(paths.indexOf(active?.path ?? '') + 1) % paths.length]); }) },
     { id: 'newWindow', label: '新建笔记窗口', run: newWindow, available: () => desktopMode && opened },

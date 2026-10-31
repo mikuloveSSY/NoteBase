@@ -35,6 +35,19 @@ header { padding:16px 24px; }
 #searchResults { flex:0 0 auto; max-height:220px; min-height:0; }
 #searchResults:not(:empty) { min-height:64px; }
 #searchResults small { display:block; white-space:normal; padding-top:4px; color:var(--muted); }
+#searchDialog { width:min(760px,calc(100vw - 32px)); max-width:none; height:min(720px,85vh); padding:24px; }
+#searchForm { height:100%; display:flex; flex-direction:column; min-height:0; }
+.search-controls { flex:none; }.search-controls h2 { margin:0 0 8px; }.search-controls>p { margin:6px 0; }
+.search-controls>.field { display:block; }.search-controls input,.search-controls select { font-size:13px; }
+.search-filters { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; min-width:0; margin:10px 0; padding:10px 12px; border:1px solid var(--border); border-radius:8px; }
+.search-filters legend { color:var(--muted); font-size:12px; }.search-filters label { min-width:0; }
+.search-index-tools { display:flex; align-items:center; justify-content:space-between; gap:8px; }.search-index-tools button { font-size:11px; padding:6px 8px; }
+#searchDialog #searchResults { display:block; flex:1; min-height:0; max-height:none; overflow:auto; border:1px solid var(--border); border-radius:8px; padding:8px; }
+#searchDialog #searchResults button { border:1px solid var(--border); margin:0 0 8px; padding:12px; border-radius:6px; white-space:normal; overflow-wrap:anywhere; }
+#searchDialog #searchResults button:last-child { margin-bottom:0; }#searchResults button>span { font-size:13px; font-weight:600; }
+.search-dialog-footer { flex:none; justify-content:flex-end; margin-bottom:0; }#searchMore { flex:none; margin-top:8px; }
+.sidebar-tools-content>button { display:block; width:100%; margin-bottom:8px; }
+@media(max-width:600px) { #searchDialog { padding:16px; }.search-filters { grid-template-columns:1fr 1fr; gap:6px; }.search-filters label:last-child { grid-column:1/-1; }.search-index-tools { flex-wrap:wrap; } }
 .sidebar-tools { margin:10px 0; padding:0; border:1px solid var(--border); border-radius:8px; }
 .sidebar-tools>summary { margin:0; padding:10px; }
 .sidebar-tools-content { padding:10px; max-height:58vh; overflow:auto; }

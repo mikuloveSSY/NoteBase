@@ -1,0 +1,16 @@
+
+> notebase-starter@0.7.0 test:e2e
+> playwright test tests/browser/member3.spec.ts --grep 搜索弹窗|搜索错误|取消在途搜索
+
+[WebServer] (node:34408) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 3 tests using 1 worker
+
+(node:43148) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 1 tests\browser\member3.spec.ts:36:1 › 搜索弹窗保留全部筛选排序、摘要与分页，点击结果打开笔记并保留条件 (846ms)
+  ok 2 tests\browser\member3.spec.ts:48:1 › 搜索错误就地显示，修改条件使旧分页失效，可重建索引并取消 (586ms)
+  ok 3 tests\browser\member3.spec.ts:55:1 › 取消在途搜索不会重新弹出窗口，窄窗口仍可使用并显示结果 (605ms)
+
+  3 passed (4.3s)
