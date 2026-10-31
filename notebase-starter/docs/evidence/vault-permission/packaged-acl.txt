@@ -1,0 +1,12 @@
+
+> notebase-starter@0.7.0 test:desktop
+> playwright test --config playwright.desktop.config.ts --grep 无权限的子目录
+
+
+Running 1 test using 1 worker
+
+(node:34136) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 1 tests\desktop\storage.spec.ts:100:1 › 真实桌面列出无权限的子目录并可重新选择可读笔记库 (3.0s)
+
+  1 passed (4.0s)
