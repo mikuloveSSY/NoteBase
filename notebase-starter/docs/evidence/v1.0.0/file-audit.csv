@@ -1,6 +1,6 @@
 ﻿path,category,bytes,contains_0.7.0
 AGENTS.md,current-document,2581,True
-CHANGELOG.md,current-document,40116,True
+CHANGELOG.md,current-document,40373,True
 NoteBase-主干基础工程-v0.1.0.zip,archive,191865,False
 README.md,current-document,2653,False
 docs/主干合并记录-2026-11-01.md,historical-document,4218,True
@@ -261,7 +261,7 @@ notebase-starter/docs/文件夹选择更新验收.md,historical-document,6504,Tr
 notebase-starter/docs/文件标签页边框验收.md,historical-document,2300,True
 notebase-starter/docs/最新版安装包与清理记录.md,current-document,6279,True
 notebase-starter/docs/检索交接-v0.4.0.md,historical-document,4127,False
-notebase-starter/docs/正式版1.0.0发布说明.md,current-document,5100,True
+notebase-starter/docs/正式版1.0.0发布说明.md,current-document,5318,True
 notebase-starter/docs/混合文件夹卡顿修复验收.md,historical-document,6110,True
 notebase-starter/docs/索引基础交接.md,historical-document,6910,False
 notebase-starter/docs/重建迁移交接-v0.6.0.md,historical-document,7792,True
