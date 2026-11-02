@@ -1,10 +1,8 @@
-# NoteBase
+# NoteBase 1.0.0
 
-main 已汇总 **四人成果整合开发版 0.7.0**，尚非正式发布。可运行工程位于 [notebase-starter](notebase-starter/README.md)，原始 0.1.0 ZIP 保留归档。
+**当前版本：1.0.0 正式版（2026-11-02）**，按用户决定发布当前四人整合成果。Windows x64提供安装器与可双击的便携exe，工程位于notebase-starter。包含Markdown编辑/分栏预览、中文检索、链接、备份恢复、版本历史与WebDAV等功能。
 
-已整合存储检索、笔记链接、UI 外壳，以及成员三的预览、导出、版本历史、备份恢复和 WebDAV。长任务在 App 锁外执行，恢复和维护有库级互斥；完整需求、规模性能、公网服务、跨平台和安装发布仍待验收。
-
-本机Windows候选程序已生成并验证可从交付目录直接启动，另有ZIP与安装器；最终文件路径、SHA256及268项功能/专项结果见[Windows候选版验收](notebase-starter/docs/Windows候选版验收.md)。本轮进一步补历史重命名/保留/回拨与恢复故障保护，仍按完整需求矩阵推进正式软件。
+下载：[GitHub v1.0.0](https://github.com/mikuloveSSY/NoteBase/releases/tag/v1.0.0)。功能范围、升级/回退说明、已知限制及本次验证见[1.0.0发布说明](notebase-starter/docs/正式版1.0.0发布说明.md)。正式版本号不代表原82条需求全部验收；最终规模性能、公网兼容、干净机安装升级及跨平台等项目继续追踪。原始ZIP、历史计划和证据保留原版本。
 
 - [版本说明](CHANGELOG.md)
 - [主干合并记录](docs/主干合并记录-2026-11-01.md)

@@ -1,5 +1,7 @@
 # NoteBase 项目工作约定
 
+- 当前软件：1.0.0正式版（2026-11-02用户明确决定），发布范围/已知限制/验证见notebase-starter/docs/正式版1.0.0发布说明.md；下文0.7.0候选版交付为历史证据，未验收需求继续追踪。
+
 ## 用户已确定的要求
 
 - 后续所有版本迭代必须推送到 https://github.com/mikuloveSSY/NoteBase ，并维护仓库根目录 CHANGELOG.md。

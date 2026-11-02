@@ -1,0 +1,11 @@
+   Compiling notebase v1.0.0 (D:\NoteBase\repository\notebase-starter\src-tauri)
+   Compiling notebase-core v1.0.0 (D:\NoteBase\repository\notebase-starter\crates\notebase-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 26.96s
+     Running unittests src\main.rs (src-tauri\target\debug\deps\notebase-621d687b097ecdd3.exe)
+
+running 2 tests
+test responsiveness_tests::closing_during_a_locked_operation_never_waits_on_the_ui_thread ... ok
+test responsiveness_tests::app_directory_and_ancestors_are_rejected_but_note_subfolders_are_allowed ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

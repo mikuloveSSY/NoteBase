@@ -32,7 +32,7 @@ $digest = (Get-FileHash -LiteralPath $executable -Algorithm SHA256).Hash.ToLower
     sourceRevision = $revision; workingTreeDirty = $dirty;
     packagedAtUtc = [DateTime]::UtcNow.ToString('o');
     executable = 'NoteBase.exe'; sha256 = $digest;
-    runtime = 'Microsoft Edge WebView2 Runtime'; releaseStatus = 'development-candidate';
+    runtime = 'Microsoft Edge WebView2 Runtime'; releaseStatus = 'stable';
 } | ConvertTo-Json | Set-Content (Join-Path $destination 'build-manifest.json') -Encoding UTF8
 ($digest + '  NoteBase.exe') | Set-Content (Join-Path $destination 'SHA256SUMS.txt') -Encoding UTF8
 $ownedFiles = @(Get-ChildItem -LiteralPath $destination -File | ForEach-Object FullName)

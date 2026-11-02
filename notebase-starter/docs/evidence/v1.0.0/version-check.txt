@@ -1,0 +1,1 @@
+PASS: npm/Cargo/Tauri/lock/UI/packager/exe version 1.0.0
