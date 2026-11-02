@@ -1,0 +1,13 @@
+
+> notebase-starter@1.0.0 test:desktop
+> playwright test --config playwright.desktop.config.ts --grep 程序目录父级|窗口关闭会先
+
+
+Running 2 tests using 1 worker
+
+(node:20056) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 1 tests\desktop\storage.spec.ts:78:1 › 程序目录父级立即拒绝且之后可打开普通混合文件夹 (1.9s)
+  ok 2 tests\desktop\storage.spec.ts:322:1 › 成员二真实窗口关闭会先冲刷未保存内容 (1.3s)
+
+  2 passed (3.8s)

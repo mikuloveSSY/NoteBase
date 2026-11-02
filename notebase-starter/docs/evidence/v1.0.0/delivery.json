@@ -1,0 +1,23 @@
+{
+  "version": "1.0.0",
+  "installerPayloadSha256": "04ba7775c021a4ea46339d5c7fd6b3a0079069de01b508e9b71ffaab34c44083",
+  "installer": "D:/NoteBase/delivery/NoteBase-1.0.0-5f49dc79-windows-x64-setup.exe",
+  "installerSha256": "bfdc4b3fa59a523d46179f800c2e6d39fe9ed76167d9ed6d5515d5b213943a1a",
+  "exeSha256": "04ba7775c021a4ea46339d5c7fd6b3a0079069de01b508e9b71ffaab34c44083",
+  "workingTreeDirty": false,
+  "cleanMachineInstallTested": false,
+  "zipSha256": "4848a3c096bf6c0ea80eb784f65013efe02e29652f7bdef471c11671913a0bb8",
+  "installerBytes": 5397379,
+  "zipPayloadSha256": "04ba7775c021a4ea46339d5c7fd6b3a0079069de01b508e9b71ffaab34c44083",
+  "releaseStatus": "stable",
+  "sourceRevision": "5f49dc793e404d0c4dd26941a3c8afbd469f2c93",
+  "executable": "D:/NoteBase/delivery/NoteBase-1.0.0-5f49dc79-windows-x64/NoteBase.exe",
+  "releaseAssets": [
+    "D:/NoteBase/delivery/NoteBase-1.0.0-5f49dc79-windows-x64/NoteBase.exe",
+    "D:/NoteBase/delivery/NoteBase-1.0.0-5f49dc79-windows-x64.zip",
+    "D:/NoteBase/delivery/NoteBase-1.0.0-5f49dc79-windows-x64-setup.exe",
+    "D:/NoteBase/delivery/NoteBase-1.0.0-5f49dc79-windows-x64/build-manifest.json",
+    "D:/NoteBase/delivery/NoteBase-1.0.0-SHA256SUMS.txt"
+  ],
+  "zip": "D:/NoteBase/delivery/NoteBase-1.0.0-5f49dc79-windows-x64.zip"
+}
